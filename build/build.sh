@@ -12,7 +12,7 @@ mysqlSourcePath=../mysql-8.0.33
 cmake \
 -DCMAKE_INSTALL_PREFIX=${mysqlSourcePath} \
 -DDOWNLOAD_BOOST=0 \
--DWITH_BOOST=${mysqlSourcePath}/boost/boost_1_77_0/boost \
+-DWITH_BOOST=${mysqlSourcePath}/boost/boost_1_77_0 \
 -DWITH_DEBUG=1 \
 ${mysqlSourcePath}
 
