@@ -11,6 +11,7 @@ https://dev.mysql.com/doc/dev/mysql-server/latest/
 
 ## MySQL 8.0.33 源码目录
 
+```
 mysql-8.0.33
 
   boost                  boost C++库
@@ -53,9 +54,11 @@ mysql-8.0.33
   unittest               单元测试
   utilities              工具
   vio                    虚拟I/O Virtual I/O
+```
 
 ## MySQL 8.0 官网文档
 
+```
 Documentation Home                       文档主页
       
 MySQL 8.0 Reference Manual               MySQL 8.0 参考手册
@@ -113,33 +116,35 @@ Download this Manual                     下载这个手册
   Info (Zip) - 4.2Mb
 
 Excerpts from this Manual                来自这个手册的摘录             
+```
 
 ## MySQL 8.0 源码文档
 
+```
 MySQL
   Welcome                      欢迎
   Getting Started              快速开始
   Infrastructure               基础设施 the basic systems and services
   Client/Server Protocol       客户端/服务端协议
   X Protocol                   X 协议
-  SQL Query Execution
-  Data Storage
-  Replication
-  Security
-  Monitoring
-  Extending MySQL
-  Available services
-  Server tools
-  Client tools
-  Testing Tools
-  Development Tools
-  Code paths
-  Deprecated List
-  Modules
-  Namespaces
-  Classes
-  Files
-
+  SQL Query Execution          SQL 查询执行
+  Data Storage                 数据存储引擎
+  Replication                  副本
+  Security                     安全
+  Monitoring                   监控
+  Extending MySQL              扩展 MySQL
+  Available services           可用的服务
+  Server tools                 服务器工具
+  Client tools                 客户端工具
+  Testing Tools                测试工具
+  Development Tools            开发工具
+  Code paths                   代码路径
+  Deprecated List              已废弃列表
+  Modules                      模块
+  Namespaces                   命名空间
+  Classes                      类
+  Files                        文件
+```
 
 ## 源码代码风格
 
