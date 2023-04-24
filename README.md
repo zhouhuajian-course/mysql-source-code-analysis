@@ -9,6 +9,25 @@ https://dev.mysql.com/doc/refman/8.0/en/
 https://dev.mysql.com/doc/dev/mysql-server/latest/  
 (Related Documentation -> MySQL 8.0 Source Code Documentation)  
 
+## CMake 命令
+
+```text
+$ cmake --help
+Usage                                                     用法
+  cmake [options] <path-to-source>                        [选项] 源码路径
+  cmake [options] <path-to-existing-build>                [选项] 已存在构建目录路径
+  cmake [options] -S <path-to-source> -B <path-to-build>  [选项] -S 源码路径 -B 构建路径
+                                                            
+Specify a source directory to (re-)generate a build system for it in the
+current working directory.  Specify an existing build directory to
+re-generate its build system.                             默认当前工作目录是构建目录
+
+Options
+  ...
+  -D <var>[:<type>]=<value>    = Create or update a cmake cache entry.   缓存实体 键值对
+  ...
+```
+
 ## MySQL 8.0.33 源码目录
 
 ```

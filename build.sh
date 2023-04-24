@@ -6,8 +6,9 @@
 # author zhouhuajian
 ##########################################
 
-mysqlSourcePath=../mysql-8.0.33
+cd ./build
 
+mysqlSourcePath=../mysql-8.0.33
 # -DDOWNLOAD_BOOST=0 \ 不需要下载，源码已有BOOST
 cmake \
 -DCMAKE_INSTALL_PREFIX=${mysqlSourcePath} \
