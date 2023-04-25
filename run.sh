@@ -1,7 +1,7 @@
 #!/bin/bash
 
 ##########################################
-# 构建 MySQL
+# 构建 mysql 并运行 mysqld
 # 
 # author zhouhuajian
 ##########################################
@@ -19,47 +19,67 @@ mysqlSourcePath=../mysql-8.0.33
 echo -e "\n\n\n============= cmake =============\n\n\n"
 
 # -DDOWNLOAD_BOOST=0 \ 不需要下载，源码已有BOOST
+# 去掉一些存储引擎，加快编译速度
 cmake \
 -DCMAKE_INSTALL_PREFIX=${mysqlSourcePath} \
 -DDOWNLOAD_BOOST=0 \
 -DWITH_BOOST=${mysqlSourcePath}/boost/boost_1_77_0 \
 -DWITH_DEBUG=1 \
+-DWITHOUT_CSV_STORAGE_ENGINE=1 \
+-DWITHOUT_BLACKHOLD_STORAGE_ENGINE=1 \
+-DWITHOUT_FEDERATED_STORAGE_ENGINE=1 \
+-DWITHOUT_ARCHIVE_STORAGE_ENGINE=1 \
+-DWITHOUT_MRG_MYISAM_STORAGE_ENGINE=1 \
+-DWITHOUT_NDBCLUSTER_STORAGE_ENGINE=1 \
 ${mysqlSourcePath}
 
 if [[ $? -eq 0 ]]; then
   echo -e "\n\n\n============= make =============\n\n\n"
-  # make -j 3
   make
 fi  
 
-myCnfPath=./test/etc/my.cnf
-
-if [[ ! -d ./test/etc ]] && [[ ! -d ./test/data ]]; then
-  mkdir -p ./test/{etc,data}
-  echo '[mysqld]' > ${myCnfPath}
-  echo '# basedir 需要是程序目录，因为 mysqld 需要 share lib 等目录' >> ${myCnfPath}
-  echo "basedir=$(pwd)" >> ${myCnfPath}
-  echo "datadir=$(pwd)/test/data" >> ${myCnfPath}
-fi
+echo -e "\n\n\n============= init =============\n\n\n"
 
 # 创建 mysql 用户和用户组
-id mysql
-if [[ ! $? -eq 0 ]]; then
+if ! id mysql; then
   groupadd mysql
   useradd -g mysql -m -d /home/mysql -s /bin/bash mysql
-  # 提前创建 不然 运行mysqld会报错
+  # 提前创建 不然 运行 mysqld 会报错
   mkdir -p /var/lib/mysql/
-  chown -R mysql:mysql /var/lib/mysql
 fi
 
-# 递归将 build 归 mysql 所有
+chown -R mysql:mysql /var/lib/mysql
 chown -R mysql:mysql *
-
-
 
 # 初始化
 # --initialize-insecure root不需要密码
-# ./bin/mysqld --defaults-file=./test/etc/my.cnf --initialize-insecure
+./bin/mysqld --user=mysql --basedir=$(pwd) --datadir=$(pwd)/data --initialize-insecure
+
+echo -e "\n\n\n============= run =============\n\n\n"
+
+# 执行mysqld
+./bin/mysqld --version
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 # 启动 mysqld
 # ./bin/mysqld --user=mysql --datadir=/mysql-source-code-analysis/build/test/data
@@ -75,14 +95,15 @@ chown -R mysql:mysql *
 # 1 row in set (0.00 sec)
 
 
+# myCnfPath=./test/etc/my.cnf
 
-
-
-
-
-
-
-
+# if [[ ! -d ./test/etc ]] && [[ ! -d ./test/data ]]; then
+#   mkdir -p ./test/{etc,data}
+#   echo '[mysqld]' > ${myCnfPath}
+#   echo '# basedir 需要是程序目录，因为 mysqld 需要 share lib 等目录' >> ${myCnfPath}
+#   echo "basedir=$(pwd)" >> ${myCnfPath}
+#   echo "datadir=$(pwd)/test/data" >> ${myCnfPath}
+# fi
 
 # cmake
 # 用法
@@ -91,7 +112,6 @@ chown -R mysql:mysql *
 # cmake [options] -S <path-to-source> -B <path-to-build>  [选项] -S 源码路径 -B 构建路径
 # 默认当前工作目录是构建目录         
 # -D <var>[:<type>]=<value>    = Create or update a cmake cache entry.   缓存实体 键值对
-
 
 # 其他参考
 # cmake . -DCMAKE_INSTALL_PREFIX=/home/mysql/mysql-install \
@@ -112,3 +132,17 @@ chown -R mysql:mysql *
 # -DMYSQL_TCP_PORT=3306 \
 # -DDOWNLOAD_BOOST=0 \
 # -DWITH_BOOST=~/Desktop/boost
+
+# cmake . \
+# -DWITH_BOOST=/opt/mysql-8.0.15/boost/ \
+# -DCMAKE_INSTALL_PREFIX=/usr/local/mysql-8.0.15 \
+# -DMYSQL_DATADIR=/data/mysql \
+# -DWITHOUT_CSV_STORAGE_ENGINE=1 \
+# -DWITHOUT_BLACKHOLD_STORAGE_ENGINE=1 \
+# -DWITHOUT_FEDERATED_STORAGE_ENGINE=1 \
+# -DWITHOUT_ARCHIVE_STORAGE_ENGINE=1 \
+# -DWITHOUT_MRG_MYISAM_STORAGE_ENGINE=1 \
+# -DWITHOUT_NDBCLUSTER_STORAGE_ENGINE=1 \
+# -DFORCE_INSOURCE_BUILD=1 \
+# -DCMAKE_CXX_COMPILER=/usr/local/bin/g++ \
+# -DCMAKE_C_COMPILER=/usr/local/bin/gcc

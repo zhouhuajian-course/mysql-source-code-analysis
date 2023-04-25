@@ -9,6 +9,29 @@ https://dev.mysql.com/doc/refman/8.0/en/
 https://dev.mysql.com/doc/dev/mysql-server/latest/  
 (Related Documentation -> MySQL 8.0 Source Code Documentation)  
 
+## 命令执行调试
+
+sql_parse.cc 中的 do_command 函数加上断点
+
+## 入口函数
+
+sql/main.cc
+
+## 源码修改 MySQL 版本
+
+```text
+修改 build/inlcude/msyql_version.h
+
+#define MYSQL_SERVER_VERSION       "8.0.33_a_special_version_set_by_zhouhuajian"
+
+```
+
+```shell
+cd build
+make -j 3
+./bin/mysqld --version
+```
+
 ## 源码调试环境搭建
 
 1. 源码安装
@@ -43,9 +66,9 @@ Windows
 ```
 1. 扩展 安装 
    Remote - SSH
-   C/C++ Extension Pack (包括 C/C++、CMake、CMake Tools)
+   C/C++ (可以不需要 CMake、CMake Tools，在机器上直接 cmake，也可以配置在VSCODE使用cmake)
 2. Remote - SSH 打开 /etc/mysql-source-code/analysis 目录
-3. create .vscode/launch.json
+3. Create .vscode/launch.json
 4. Run -> Debug
 ```
 
