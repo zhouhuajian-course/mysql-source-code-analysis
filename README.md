@@ -23,12 +23,22 @@ sql/main.cc
 修改 MYSQL_VERSION
 
 MYSQL_VERSION_PATCH=123456  （原来是 33）
+
+cmake/mysql_version.cmake 使用一个宏定义MYSQL_GET_CONFIG_VALUE解析MySQL_VERSION文件里面的键值对
 ```
 
 ```shell
 $ ./run.sh
+$ cd build
+$ ./bin/mysql --version
+./bin/mysql  Ver 8.0.123456 for Linux on x86_64 (Source distribution)
+$ ./bin/mysql -h 127.0.0.1 -e "SELECT version();"
++------------------+
+| version()        |
++------------------+
+| 8.0.123456-debug |
++------------------+
 ```
-
 
 ## 源码调试环境搭建
 

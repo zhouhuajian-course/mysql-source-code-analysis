@@ -1,7 +1,9 @@
 /mysql-boost-8.0.33.tar.gz
+
 /temp
 
-/build/*
-!/build/build.sh
+/build
+/build2
+/build3
 
 /cpp-manual

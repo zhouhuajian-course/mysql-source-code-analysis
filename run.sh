@@ -6,7 +6,8 @@
 # author zhouhuajian
 ##########################################
 
-buildPath=./build
+buildPath=./build2
+
 
 if [[ ! -d ${buildPath} ]]; then
   mkdir ${buildPath}
