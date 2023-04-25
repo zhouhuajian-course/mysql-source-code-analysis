@@ -6,9 +6,18 @@
 # author zhouhuajian
 ##########################################
 
-cd ./build
+buildPath=./build
+
+if [[ ! -d ${buildPath} ]]; then
+  mkdir ${buildPath}
+fi
+
+cd ${buildPath}
 
 mysqlSourcePath=../mysql-8.0.33
+
+echo -e "\n\n\n============= cmake =============\n\n\n"
+
 # -DDOWNLOAD_BOOST=0 \ 不需要下载，源码已有BOOST
 cmake \
 -DCMAKE_INSTALL_PREFIX=${mysqlSourcePath} \
@@ -17,6 +26,10 @@ cmake \
 -DWITH_DEBUG=1 \
 ${mysqlSourcePath}
 
+if [[ $? -eq 0 ]]; then
+  echo -e "\n\n\n============= make =============\n\n\n"
+  make
+fi  
 
 
 

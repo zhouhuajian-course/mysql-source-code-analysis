@@ -9,6 +9,26 @@ https://dev.mysql.com/doc/refman/8.0/en/
 https://dev.mysql.com/doc/dev/mysql-server/latest/  
 (Related Documentation -> MySQL 8.0 Source Code Documentation)  
 
+## 文件后缀
+
+C语言 头文件 .h 源文件 .c
+
+C++语言 
+
+头文件最开始使用 .h .c 但和C语言无法区分，于是使用.H .C .h++ .c++进行区分，  
+但个别系统文件名不区分大小写，个别系统则文件不能出现+， 
+于是大家开发C++程序普通使用以下文件后缀
+
+头文件 .h  .hpp .hxx (.h 仍然被普遍使用在c++ 可能是解析原理一样 都是简单地引入和替换)  
+源文件 .cc .cpp .cxx 
+
+## 编译报错解决
+
+1. collect2: fatal error: ld terminated with signal 9 [Killed]
+   内存增大到4GB
+2. /opt/rh/devtoolset-11/root/usr/bin/ld: final link failed: No space left on device
+   删掉不需要的大文件或增大磁盘容量到40GB
+
 ## CMake 命令
 
 ```text
