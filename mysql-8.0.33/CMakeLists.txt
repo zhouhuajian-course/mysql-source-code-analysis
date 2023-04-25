@@ -20,8 +20,10 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301  USA
 
+# 发送状态消息 运行中的 cmake 版本 
 MESSAGE(STATUS "Running cmake version ${CMAKE_VERSION}")
 
+# 如果是 Windows 系统
 IF(WIN32)
   # Load policies. This is needed in order to parse the wmic version check.
   CMAKE_MINIMUM_REQUIRED(VERSION 3.5.1)
@@ -53,6 +55,7 @@ IF(WIN32)
       CMAKE_MINIMUM_REQUIRED(VERSION 3.15.3)
     ENDIF()
   ENDIF()
+# 如果是苹果系统  
 ELSEIF(APPLE)
   # Version 3.12.4 is needed because the new build system of Xcode is not
   # supported by cmake. 3.12.4 will force using the legacy build system.
@@ -74,8 +77,10 @@ ELSEIF(APPLE)
   # So we end up linking with:
   #    /Applications/Xcode.app/.../usr/lib/libresolv.tbd
   # We must postpone the version test until we have called 'uname -r' below.
+# 如果是 UNIX或类UNIK 系统  
 ELSEIF(UNIX)
   # This is currently minimum version on all supported platforms.
+  # 如果 CMAKE 版本 版本小于 3.5.1
   IF(CMAKE_VERSION VERSION_LESS 3.5.1)
     # Default cmake is 2.8.12.2 on RedHat
     IF(EXISTS "/etc/redhat-release")
@@ -86,11 +91,14 @@ ELSEIF(UNIX)
       ELSE()
         MESSAGE(STATUS "Please install cmake3 (yum install cmake3)")
       ENDIF()
+    # 如果 CMAKE 版本 版本大于 3.5.1  
     ELSE()
       # On SunOS /opt/csw/bin/cmake is (most likely) too old.
+      # 找 uname 程序
       FIND_PROGRAM(MY_UNAME uname /bin /usr/bin /usr/local/bin /sbin)
       IF(MY_UNAME)
         EXEC_PROGRAM(uname ARGS -s OUTPUT_VARIABLE MY_HOST_SYSTEM_NAME)
+        # 如果主机系统名 匹配 SunOS
         IF(MY_HOST_SYSTEM_NAME MATCHES "SunOS")
           FIND_PROGRAM(MY_CMAKE cmake /usr/bin
             NO_CMAKE_ENVIRONMENT_PATH
@@ -109,11 +117,16 @@ ELSEIF(UNIX)
 ENDIF()
 
 # CMake 3.5 is needed for TARGET_SOURCES(... $<TARGET_OBJECTS:${LIB}_objlib>)
+# CMAKE 最小版本 需要 版本 3.5.1
 CMAKE_MINIMUM_REQUIRED(VERSION 3.5.1)
 
 # Will set GIT_EXECUTABLE and GIT_FOUND
+# 找包 Git
 FIND_PACKAGE(Git)
 
+# 设置变量 CMAKE_MODULE_PATH 
+# set(<variable> <value>...) 
+# 可以设置多个值，多个值分号分割
 SET(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_SOURCE_DIR}/cmake)
 
 # First, decide about build type (debug or release)
@@ -121,11 +134,15 @@ SET(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_SOURCE_DIR}/cmake)
 # respect user wishes and do not (re)define CMAKE_BUILD_TYPE. If WITH_DEBUG
 # is given, set CMAKE_BUILD_TYPE = Debug. Otherwise, use Relwithdebinfo.
 
+# 如果定义了 CMAKE_BUILD_TYPE
 IF(DEFINED CMAKE_BUILD_TYPE)
   SET(HAVE_CMAKE_BUILD_TYPE TRUE)
 ENDIF()
 
+# option(<variable> "<help_text>" [value]) 默认 OFF
+# 选项 WITH_DUBUG
 OPTION(WITH_DEBUG "Use dbug/safemutex" OFF)
+# 选项 检查错误消息格式
 OPTION(CHECK_ERRMSG_FORMAT "Check printf format for English error messages" OFF)
 
 # Use a default manufacturer if no manufacturer was identified.

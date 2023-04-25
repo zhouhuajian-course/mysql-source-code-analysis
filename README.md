@@ -20,17 +20,15 @@ sql/main.cc
 ## 源码修改 MySQL 版本
 
 ```text
-修改 build/inlcude/msyql_version.h
+修改 MYSQL_VERSION
 
-#define MYSQL_SERVER_VERSION       "8.0.33_a_special_version_set_by_zhouhuajian"
-
+MYSQL_VERSION_PATCH=123456  （原来是 33）
 ```
 
 ```shell
-cd build
-make -j 3
-./bin/mysqld --version
+$ ./run.sh
 ```
+
 
 ## 源码调试环境搭建
 

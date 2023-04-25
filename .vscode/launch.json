@@ -1,35 +1,38 @@
 {
-    "version": "0.2.0",
-    "configurations": [
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "GDB Remote Launch",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "/mysql-source-code-analysis/build/bin/mysqld",
+      "args": [
+        "--user=mysql",
+        "--datadir=/mysql-source-code-analysis/build/data"
+      ],
+      "stopAtEntry": true,
+      "environment": [],
+      "externalConsole": false,
+      "MIMode": "gdb",
+      "miDebuggerPath": "gdb",
+      "miDebuggerArgs": "gdb",
+      "linux": {
+        "MIMode": "gdb",
+        "miDebuggerPath": "/usr/bin/gdb"
+      },
+      "logging": {
+        "moduleLoad": false,
+        "engineLogging": false,
+        "trace": false
+      },
+      "setupCommands": [
         {
-            "name": "gdb Remote Launch",
-            "type": "cppdbg",
-            "request": "launch",
-            "program": "/mysql-source-code-analysis/build/bin/mysqld",
-            "args": ["--user=mysql", "--datadir=/mysql-source-code-analysis/build/test/data"],
-            "stopAtEntry": true,
-            "environment": [],
-            "externalConsole": false,
-            "MIMode": "gdb",
-            "miDebuggerPath": "gdb",
-            "miDebuggerArgs": "gdb",
-            "linux": {
-                "MIMode": "gdb",
-                "miDebuggerPath": "/usr/bin/gdb"
-            },
-            "logging": {
-                "moduleLoad": false,
-                "engineLogging": false,
-                "trace": false
-            },
-            "setupCommands": [
-                {
-                    "description": "Enable pretty-printing for gdb",
-                    "text": "-enable-pretty-printing",
-                    "ignoreFailures": true
-                }
-            ],
-            "cwd": "${workspaceFolder}"
+          "description": "Enable pretty-printing for gdb",
+          "text": "-enable-pretty-printing",
+          "ignoreFailures": true
         }
-    ]
+      ],
+      "cwd": "${workspaceFolder}"
+    }
+  ]
 }
