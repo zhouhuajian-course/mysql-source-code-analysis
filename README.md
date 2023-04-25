@@ -9,6 +9,46 @@ https://dev.mysql.com/doc/refman/8.0/en/
 https://dev.mysql.com/doc/dev/mysql-server/latest/  
 (Related Documentation -> MySQL 8.0 Source Code Documentation)  
 
+## 源码调试环境搭建
+
+1. 源码安装
+
+机器配置 CentOS 7 4G 40G (硬盘不能20G，编译一半会空间不足。)
+
+`mkdir /mysql-source-code-analysis && cd /mysql-source-code-analysis`
+
+```
+1. rz mysql-boost-8.0.33.tar.gz
+2. tar -zxvf mysql-boost-8.0.33.tar.gz
+3. 安装 cmake 3.7.1+，确保cmake gcc gcc-c++ 版本，卸载或备份原来的 gcc gcc-c++ 相关命令
+4. 运行 build.sh，第一次编译时，建议一个一个地运行 build.sh 里面的命令
+根据报错提示 安装对应依赖 并在需要时，修改环境变量PATH (/etc/profile)
+yum install devtoolset-11-gcc devtoolset-11-gcc-c++ devtoolset-11-binutils   (留意/opt/rh/devtoolset-11)
+yum install openssl openssl-devel  
+yum install ncurses-devel  
+5. 参考 build.sh 做后续初始化操作
+6. ./bin/mysqld --defaults-file=./test/etc/my.cnf --initialize-insecure
+2023-04-25T03:38:57.422401Z 0 [System] [MY-013169] [Server] /mysql-source-code-analysis/build/runtime_output_directory/mysqld (mysqld 8.0.33-debug) initializing of server in progress as process 71824
+2023-04-25T03:38:57.431721Z 1 [System] [MY-013576] [InnoDB] InnoDB initialization has started.
+2023-04-25T03:38:58.054746Z 1 [System] [MY-013577] [InnoDB] InnoDB initialization has ended.
+2023-04-25T03:39:02.870266Z 6 [Warning] [MY-010453] [Server] root@localhost is created with an empty password ! Please consider switching off the --initialize-insecure option.
+7. ll test/data/
+8. 使用 VSCODE 启动 mysqld
+```
+
+二. 使用 VSCODE 启动 mysqld，并调试 mysqld
+
+Windows
+
+```
+1. 扩展 安装 
+   Remote - SSH
+   C/C++ Extension Pack (包括 C/C++、CMake、CMake Tools)
+2. Remote - SSH 打开 /etc/mysql-source-code/analysis 目录
+3. create .vscode/launch.json
+4. Run -> Debug
+```
+
 ## 文件后缀
 
 C语言 头文件 .h 源文件 .c
@@ -223,9 +263,9 @@ $ cmake --version
 # devtoolset-10 对应 gcc10.x.x 版本
 $ yum remove gcc -y
 $ yum install centos-release-scl -y
-$ yum install devtoolset-10 -y
+$ yum install devtoolset-11 -y
 $ vim /etc/profile
-export PATH=$PATH:/opt/cmake-3.26.3-linux-x86_64/bin:/opt/rh/devtoolset-10/root/bin
+export PATH=$PATH:/opt/cmake-3.26.3-linux-x86_64/bin:/opt/rh/devtoolset-11/root/bin
 $ source /etc/profile
 ```
 
