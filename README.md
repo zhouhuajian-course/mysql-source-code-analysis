@@ -9,13 +9,206 @@ https://dev.mysql.com/doc/refman/8.0/en/
 https://dev.mysql.com/doc/dev/mysql-server/latest/  
 (Related Documentation -> MySQL 8.0 Source Code Documentation)  
 
-## 命令执行调试
+## SELECT COUNT(*) FROM `table` 源码分析
 
-sql_parse.cc 中的 do_command 函数加上断点
+性能
+
+COUNT(*) = COUNT(1) > COUNT(`主键`) > COUNT(`某非主键字段`)
+
+COUNT(*) COUNT(1)    不需要具体取值，效率最高
+COUNT(`主键`)        不需要具体取值，默认认为主键里面的值不为NULL，但会有一些额外过程
+COUNT(`某非主键字段`) 需要判断 值是否为 NULL，不为NULL才加+，所以需要具体取值，性能最低
+
+## SELECT UNIX_TIMESTAMP(); 源码分析
+
+函数源码表
+
+```c++
+item_create.cc
+
+static const std::pair<const char *, Create_func *> func_array[] = {
+    {"ABS", SQL_FN(Item_func_abs, 1)},
+    // ...
+    {"MD5", SQL_FN(Item_func_md5, 1)},
+    // ...
+    {"PI", SQL_FN(Item_func_pi, 0)},
+    {"POW", SQL_FN(Item_func_pow, 2)},
+    {"POWER", SQL_FN(Item_func_pow, 2)},
+    {"PS_CURRENT_THREAD_ID", SQL_FN(Item_func_pfs_current_thread_id, 0)},
+    {"PS_THREAD_ID", SQL_FN(Item_func_pfs_thread_id, 1)},
+    {"QUOTE", SQL_FN(Item_func_quote, 1)},
+    {"RADIANS", SQL_FN(Item_func_radians, 1)},
+    {"RAND", SQL_FN_V(Item_func_rand, 0, 1)},
+    {"RANDOM_BYTES", SQL_FN(Item_func_random_bytes, 1)},
+    {"REGEXP_INSTR", SQL_FN_V_LIST(Item_func_regexp_instr, 2, 6)},
+    {"REGEXP_LIKE", SQL_FN_V_LIST(Item_func_regexp_like, 2, 3)},
+    {"REGEXP_REPLACE", SQL_FN_V_LIST(Item_func_regexp_replace, 3, 6)},
+    {"REGEXP_SUBSTR", SQL_FN_V_LIST(Item_func_regexp_substr, 2, 5)},
+    {"RELEASE_ALL_LOCKS", SQL_FN(Item_func_release_all_locks, 0)},
+    {"RELEASE_LOCK", SQL_FN(Item_func_release_lock, 1)},
+    {"REVERSE", SQL_FN(Item_func_reverse, 1)},
+    {"ROLES_GRAPHML", SQL_FN(Item_func_roles_graphml, 0)},
+    {"ROUND", SQL_FACTORY(Round_instantiator)},
+    {"RPAD", SQL_FN(Item_func_rpad, 3)},
+    {"RTRIM", SQL_FN(Item_func_rtrim, 1)},
+    {"SEC_TO_TIME", SQL_FN(Item_func_sec_to_time, 1)},
+    {"SHA", SQL_FN(Item_func_sha, 1)},
+    {"SHA1", SQL_FN(Item_func_sha, 1)},
+    {"SHA2", SQL_FN(Item_func_sha2, 2)},
+    {"SIGN", SQL_FN(Item_func_sign, 1)},
+    {"SIN", SQL_FN(Item_func_sin, 1)},
+    {"SLEEP", SQL_FN(Item_func_sleep, 1)},
+    {"SOUNDEX", SQL_FN(Item_func_soundex, 1)},
+    {"SOURCE_POS_WAIT", SQL_FN_V(Item_source_pos_wait, 2, 4)},
+    {"SPACE", SQL_FN(Item_func_space, 1)},
+    // ...
+    {"SQRT", SQL_FN(Item_func_sqrt, 1)},
+    {"STRCMP", SQL_FN(Item_func_strcmp, 2)},
+    {"STR_TO_DATE", SQL_FN(Item_func_str_to_date, 2)},
+    // ...
+    {"TIMEDIFF", SQL_FN(Item_func_timediff, 2)},
+    {"TIME_FORMAT", SQL_FACTORY(Time_format_instantiator)},
+    {"TIME_TO_SEC", SQL_FN(Item_func_time_to_sec, 1)},
+    {"TO_BASE64", SQL_FN(Item_func_to_base64, 1)},
+    {"TO_DAYS", SQL_FN(Item_func_to_days, 1)},
+    {"TO_SECONDS", SQL_FN(Item_func_to_seconds, 1)},
+    {"UCASE", SQL_FN(Item_func_upper, 1)},
+    {"UNCOMPRESS", SQL_FN(Item_func_uncompress, 1)},
+    {"UNCOMPRESSED_LENGTH", SQL_FN(Item_func_uncompressed_length, 1)},
+    {"UNHEX", SQL_FN(Item_func_unhex, 1)},
+    {"UNIX_TIMESTAMP", SQL_FN_V(Item_func_unix_timestamp, 0, 1)},
+    {"UPDATEXML", SQL_FN(Item_func_xml_update, 3)},
+    {"UPPER", SQL_FN(Item_func_upper, 1)},
+    {"UUID", SQL_FN(Item_func_uuid, 0)},
+    {"UUID_SHORT", SQL_FN(Item_func_uuid_short, 0)},
+    {"UUID_TO_BIN", SQL_FN_V(Item_func_uuid_to_bin, 1, 2)},
+    {"VALIDATE_PASSWORD_STRENGTH",
+     SQL_FN(Item_func_validate_password_strength, 1)},
+    {"VERSION", SQL_FN(Item_func_version, 0)},
+    {"WEEKDAY", SQL_FACTORY(Weekday_instantiator)},
+    {"WEEKOFYEAR", SQL_FACTORY(Weekofyear_instantiator)},
+    {"YEARWEEK", SQL_FACTORY(Yearweek_instantiator)},
+    // ...
+```
+
+调用栈 CALL STACK
+
+```c++
+// 再回到 val_int，最后取的是 tm.m_tv_sec
+
+// Item_函数_unix_时间戳::值_时间值
+Item_func_unix_timestamp::val_timeval(Item_func_unix_timestamp * const this, my_timeval * tm) (sql\item_timefunc.cc:1670)
+// Item_时间值_函数::值_整数
+Item_timeval_func::val_int(Item_timeval_func * const this) (sql\item_timefunc.cc:1630)
+// Item::发送
+Item::send(Item * const this, Protocol * protocol, String * buffer) (sql\item.cc:7318)
+// THD::发送_结果_设置_行
+THD::send_result_set_row(THD * const this, const mem_root_deque<Item*> & row_items) (sql\sql_class.cc:2866)
+// 查询结果发送::发送数据
+Query_result_send::send_data(Query_result_send * const this, THD * thd, const mem_root_deque<Item*> & items) (sql\query_result.cc:100)
+// Query 表达式::执行迭代器查询
+Query_expression::ExecuteIteratorQuery(Query_expression * const this, THD * thd) (sql\sql_union.cc:1785)
+// Query 表达式::执行
+Query_expression::execute(Query_expression * const this, THD * thd) (sql\sql_union.cc:1823)
+// Sql_命令_dml::执行 内部
+Sql_cmd_dml::execute_inner(Sql_cmd_dml * const this, THD * thd) (sql\sql_select.cc:799)
+Sql_cmd_dml::execute(Sql_cmd_dml * const this, THD * thd) (sql\sql_select.cc:578)
+// mysql 执行命令
+mysql_execute_command(THD * thd, bool first_level) (sql\sql_parse.cc:4714)
+dispatch_sql_command(THD * thd, Parser_state * parser_state) (sql\sql_parse.cc:5363)
+dispatch_command(THD * thd, const COM_DATA * com_data, enum_server_command command) (sql\sql_parse.cc:2050)
+do_command(THD * thd) (sql\sql_parse.cc:1439)
+handle_connection(void * arg) (sql\conn_handler\connection_handler_per_thread.cc:302)
+pfs_spawn_thread(void * arg) (storage\perfschema\pfs.cc:3042)
+libpthread.so.0!start_thread (Unknown Source:0)
+libc.so.6!clone (Unknown Source:0)
+```
+
+调试过程
+
+```c++
+mysql -h 127.0.0.1 -e "SELECT UNIX_TIMESTAMP();"
+
+断点打在 bool Item_func_unix_timestamp::val_timeval(my_timeval *tm)
+
+tm
+  0x7fffac6f5ae0
+    m_tv_sec: 140736086366976
+    m_tv_usec: 140734669875528
+
+回到 longlong Item_timeval_func::val_int()
+
+tm
+  m_tv_sec: 1682503475
+  m_tv_usec: 0
+
+最后取的是这里 tm 的 m_tv_sec
+
+$ mysql -h 127.0.0.1 -e "SELECT UNIX_TIMESTAMP();"
++------------------+
+| UNIX_TIMESTAMP() |
++------------------+
+|       1682503475 |
++------------------+
+···
+
+## 相关术语
+
+Server 层、存储层
+
+MVCC
+
+## SQL 执行三个阶段
+
+准备阶段 prepare 优化阶段 optimize 执行阶段 execute
+
+## MySQL 命令执行调试断点
+
+sql_parse.cc 中的 mysql_execute_command 函数加上断点，大部分SQL查询都会经过这个函数
+
+调用栈 call stack 使用 
+
+```c++
+// mysql 执行命令
+mysql_execute_command(THD * thd, bool first_level) (sql\sql_parse.cc:2953)
+// 分发 sql 命令
+dispatch_sql_command(THD * thd, Parser_state * parser_state) (sql\sql_parse.cc:5363)
+// 分发命令
+dispatch_command(THD * thd, const COM_DATA * com_data, enum_server_command command) (sql\sql_parse.cc:2050)
+// 做命令
+do_command(THD * thd) (sql\sql_parse.cc:1439)
+// 处理连接
+handle_connection(void * arg) (sql\conn_handler\connection_handler_per_thread.cc:302)
+// pfs_spawn_thread
+pfs_spawn_thread(void * arg) (storage\perfschema\pfs.cc:3042)
+// 启动线程
+libpthread.so.0!start_thread (Unknown Source:0)
+// 克隆
+libc.so.6!clone (Unknown Source:0)
+```
+
+```c++
+// 第一个参数 thd 是当前线程对象
+
+// thd->query() 可以看到当前正在处理的 SQL
+thd->query()
+{...}
+str: 0x7fff641806e0 "SELECT VERSION()"
+length: 16
+
+// thd->variables 可以看到相关变量
+thd->variables
+// ...
+net_read_timeout: 30
+net_retry_count: 10
+net_wait_timeout: 28800
+net_write_timeout: 60
+// ...
+```
 
 ## 入口函数
 
-sql/main.cc
+sql/main.cc:main
 
 ## 源码修改 MySQL 版本
 
