@@ -9,6 +9,50 @@ https://dev.mysql.com/doc/refman/8.0/en/
 https://dev.mysql.com/doc/dev/mysql-server/latest/  
 (Related Documentation -> MySQL 8.0 Source Code Documentation)  
 
+## 聚集索引/辅助索引
+
+```
+2.1、Clustered Indexes（聚簇索引/聚集索引）
+聚簇索引的特点：
+
+每个InnoDB表都有一个称为聚集索引的特殊索引，用于存储行数据。
+当表上存在PRIMARY KEY时，InnoDB将其用作聚集索引。
+当表上不存在PRIMARY KEY时，InnoDB将使用第一个NOT NULL的列的UNIQUE索引，作为聚集索引。
+如果表没有PRIMARY KEY和合适的UNIQUE索引，InnoDB会自动生成一个名为GEN_CLUST_index的隐藏聚集索引（ROW_ID），6bit，自动增长。
+聚簇索引的功能：
+
+IOT，索引组织表。
+针对ID（PK）的查询快速找到记录（有序）。
+通过聚集索引访问行很快，因为索引搜索直接指向包含行数据的页面。
+
+2.2、Secondary Indexes（辅助索引）
+
+聚集索引以外的索引称为辅助索引。
+
+辅助索引中的每个记录都包含行的主键列，以及为辅助索引指定的列，使用这个主键值来搜索聚集索引中的行。
+
+如果主键过长，则辅助索引使用更多的空间，因此使用短主键是有利的。
+索引都是有序的。
+索引覆盖和回表查询：
+
+索引覆盖(use index)：查询过程中，直接从索引中查询出了所需要的值。
+回表查询(use where)：查询过程中，不能直接从索引中取到所需要的值，需要回覆盖索引再取值。
+```
+
+## MySQL 版本直接从 5.7 跳到 8.0
+
+MySQL 从 5.7 直接升级到 8.0 是因为 MySQL 开发团队在 5.7 版本后引入了许多重要的功能和改进，这些功能包括了更好的性能、安全性和可伸缩性，例如支持窗口函数、支持更高效的索引算法、更好的数据加密和更高级的查询优化等。这些改进和功能的引入使得 MySQL 8.0 与 5.7 相比更加先进和稳定。
+
+此外，MySQL 开发团队在过去的版本中已经表明他们计划在未来的版本中跳过 5.8 和 5.9，直接将版本号更新到 8.0，这也是 MySQL 8.0 直接从 5.7 升级而来的原因之一。这种版本号跳跃的做法不是 MySQL 开发团队所独有的，其他软件也曾经出现过类似的情况。这种做法的好处是可以向用户传递一个更强的信息，表明新版本的变化和功能非常重要和突出，需要用户尽快升级。
+
+因此，MySQL 8.0 直接从 5.7 升级而来是一个正常的版本跳跃，是为了更好地满足用户需求，提供更先进的功能和更好的性能。
+
+----------------------
+
+MySQL从5.7直接升级到8.0是因为在这两个版本之间有较大的技术差距和功能改进，MySQL 8.0引入了许多新功能和重要的性能改进，包括更好的安全性、更高的性能、更好的可扩展性、JSON支持等。而且，MySQL 8.0还引入了更严格的数据类型检查和其他一些重要的改进和变化，这使得从以前的版本升级可能会更加困难和复杂。因此，直接从5.7升级到8.0也有利于推广和使用最新的数据库技术。
+
+_From Internet_
+
 ## 名人名言
 
 1. MySQL 采用单进程多线程架构 （ps -ef | grep mysql | grep -v grep）
@@ -25,16 +69,84 @@ share/mysql/       各种字符集、语言相关的错误提示目录
 
 ## MySQL 数据目录
 
-一个库一个目录
+一个库一个目录 例如 school 
 
   表结构、表数据、表索引
 
-  所有存储引擎 表结构都是 表名.frm
+  MySQL8.0 以后没有 表结构 表名.frm，元数据都在系统表。 系统表空间 ibdata 和 mysql.ibd
 
-  MyISAM 表数据和表索引分开，索引全部都是二级索引 表名.MYD 表名.MDI  
-  InnoDB 表数据和表索引放一起，数据即索引，索引即数据
+  MyISAM 表数据和表索引分开，索引全部都是二级索引 表名.MYD 表名.MDI   例如 student.MYD student.MDI 
+  InnoDB 表数据和表索引放一起，数据即索引，索引即数据 表名.ibd        例如 student.ibd
+
+表结构存放在 ibdata1, ibdata2, ...
+
+https://dev.mysql.com/doc/refman/8.0/en/glossary.html#glos_ibdata_file
+
+```
+ibdata file
+
+  A set of files with names such as ibdata1, ibdata2, and so on, that make up the InnoDB system tablespace. For information about the structures and data that reside in the system tablespace ibdata files, see Section 15.6.3.1, “The System Tablespace”. (系统 表空间)
+
+  Growth of the ibdata files is influenced by the innodb_autoextend_increment configuration option.
+
+  See Also change buffer, data dictionary, doublewrite buffer, file-per-table, .ibd file, innodb_file_per_table, system tablespace, undo log.
+```
+
+```
+1、默认情况下ibdata存放InnoDB表（InnoDB数据字典）元数据、undo logs、the change buffer, and the doublewrite buffer
+2、如果innodb_file_per_table=off，则ibdata也存放InnoDB表的实际数据，也就是InnoDB表建立后，不会再有单独的tablename.ibd文件
+3、虽然InnoDB表元数据通过information_schema.tables来读取，但是实际上information_schema是一个虚拟数据库，并不物理存在，这些数据真正存放的地方就是ibdata
+备注：元数据(meta data)--"data about data" 关于数据的数据，一般是结构化数据（如存储在数据库里的数据，规定了字段的长度、类型等）
+```
+
+_From Internet_
 
 ## SELECT COUNT(*) FROM `table` 源码分析
+
+断点位置 
+
+storage\innobase\row\row0mysql.cc row_mysql_parallel_select_count_star
+
+执行SQL 
+
+SELECT COUNT(*) FROM student;
+
+调用栈
+
+```c++
+// 并行 select count *
+row_mysql_parallel_select_count_star(trx_t * trx, std::vector<dict_index_t*, std::allocator<dict_index_t*> > & indexes, size_t n_threads, ulint * n_rows) (storage\innobase\row\row0mysql.cc:4360)
+// 为 mysql 扫描索引
+row_scan_index_for_mysql(row_prebuilt_t * prebuilt, dict_index_t * index, size_t max_threads, bool check_keys, ulint * n_rows) (storage\innobase\row\row0mysql.cc:4588)
+ha_innobase::records(ha_innobase * const this, ha_rows * num_rows) (storage\innobase\handler\ha_innodb.cc:16617)
+// 从这里开始进入引擎层
+handler::ha_records(handler * const this, ha_rows * num_rows) (sql\handler.h:5237)
+get_exact_record_count(QEP_TAB * qep_tab, uint table_count, int * error) (sql\iterators\ref_row_iterators.cc:858)
+// 使用UnqualifiedCount迭代器
+UnqualifiedCountIterator::Read(UnqualifiedCountIterator * const this) (sql\iterators\ref_row_iterators.cc:880)
+Query_expression::ExecuteIteratorQuery(Query_expression * const this, THD * thd) (sql\sql_union.cc:1770)
+Query_expression::execute(Query_expression * const this, THD * thd) (sql\sql_union.cc:1823)
+Sql_cmd_dml::execute_inner(Sql_cmd_dml * const this, THD * thd) (sql\sql_select.cc:799)
+Sql_cmd_dml::execute(Sql_cmd_dml * const this, THD * thd) (sql\sql_select.cc:578)
+mysql_execute_command(THD * thd, bool first_level) (sql\sql_parse.cc:4714)
+dispatch_sql_command(THD * thd, Parser_state * parser_state) (sql\sql_parse.cc:5363)
+dispatch_command(THD * thd, const COM_DATA * com_data, enum_server_command command) (sql\sql_parse.cc:2050)
+do_command(THD * thd) (sql\sql_parse.cc:1439)
+handle_connection(void * arg) (sql\conn_handler\connection_handler_per_thread.cc:302)
+pfs_spawn_thread(void * arg) (storage\perfschema\pfs.cc:3042)
+libpthread.so.0!start_thread (Unknown Source:0)
+libc.so.6!clone (Unknown Source:0)
+```
+
+```c++
+继续往后走，可以调试出
+
+n_rows
+  0x7fffac6f5ec8
+    *n_rows: 6
+
+student表的总数为 6
+```
 
 性能
 
