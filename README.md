@@ -9,6 +9,31 @@ https://dev.mysql.com/doc/refman/8.0/en/
 https://dev.mysql.com/doc/dev/mysql-server/latest/  
 (Related Documentation -> MySQL 8.0 Source Code Documentation)  
 
+## 名人名言
+
+1. MySQL 采用单进程多线程架构 （ps -ef | grep mysql | grep -v grep）
+2. InnoDB 数据即索引，索引即数据
+
+## MySQL 安装目录
+
+bin/               mysql 客户端和实用程序目录
+sbin/              mysqld 服务器程序目录
+share/man/         Unix 帮助手册目录
+include/mysql/     头文件目录
+lib/mysql/         库文件目录
+share/mysql/       各种字符集、语言相关的错误提示目录
+
+## MySQL 数据目录
+
+一个库一个目录
+
+  表结构、表数据、表索引
+
+  所有存储引擎 表结构都是 表名.frm
+
+  MyISAM 表数据和表索引分开，索引全部都是二级索引 表名.MYD 表名.MDI  
+  InnoDB 表数据和表索引放一起，数据即索引，索引即数据
+
 ## SELECT COUNT(*) FROM `table` 源码分析
 
 性能
@@ -18,6 +43,8 @@ COUNT(*) = COUNT(1) > COUNT(`主键`) > COUNT(`某非主键字段`)
 COUNT(*) COUNT(1)    不需要具体取值，效率最高
 COUNT(`主键`)        不需要具体取值，默认认为主键里面的值不为NULL，但会有一些额外过程
 COUNT(`某非主键字段`) 需要判断 值是否为 NULL，不为NULL才加+，所以需要具体取值，性能最低
+
+InnoDB引擎 默认4个线程 并行 统计 有参数可调
 
 ## SELECT UNIX_TIMESTAMP(); 源码分析
 
@@ -131,18 +158,32 @@ mysql -h 127.0.0.1 -e "SELECT UNIX_TIMESTAMP();"
 
 断点打在 bool Item_func_unix_timestamp::val_timeval(my_timeval *tm)
 
-tm
-  0x7fffac6f5ae0
-    m_tv_sec: 140736086366976
-    m_tv_usec: 140734669875528
+bool Item_func_unix_timestamp::val_timeval(my_timeval *tm) {
+  assert(fixed == 1);
+  // 如果参数数量为0 没有参数 SELECT UNIT_TIMESTAMP();
+  if (arg_count == 0) {
+    // tm->m_tv_sec 设置为 当前线程 查询 开始时间 最后取的是这个值
+    tm->m_tv_sec = current_thd->query_start_in_secs();
+    // tm->m_tv_usec 设置为 0
+    tm->m_tv_usec = 0;
+    return false;  // no args: null_value is set in constructor and is always 0.
+  }
+  int warnings = 0;
+  return (null_value = args[0]->get_timeval(tm, &warnings));
+}
 
 回到 longlong Item_timeval_func::val_int()
+
+longlong Item_timeval_func::val_int() {
+  my_timeval tm;
+  return val_timeval(&tm) ? 0 : tm.m_tv_sec;
+}
 
 tm
   m_tv_sec: 1682503475
   m_tv_usec: 0
 
-最后取的是这里 tm 的 m_tv_sec
+取 tm 的 m_tv_sec
 
 $ mysql -h 127.0.0.1 -e "SELECT UNIX_TIMESTAMP();"
 +------------------+
@@ -150,9 +191,22 @@ $ mysql -h 127.0.0.1 -e "SELECT UNIX_TIMESTAMP();"
 +------------------+
 |       1682503475 |
 +------------------+
-···
+
+其他信息
+
+// 时间值结构体
+struct my_timeval {
+  // 8字节整数
+  int64_t m_tv_sec;
+  int64_t m_tv_usec;
+};
+```
 
 ## 相关术语
+
+聚簇索引 clustered index 
+
+二级索引 secondary index
 
 Server 层、存储层
 

@@ -3058,7 +3058,9 @@ class THD : public MDL_context_owner,
     time_zone_used = true;
     return variables.time_zone;
   }
-  time_t query_start_in_secs() const { return start_time.tv_sec; }
+  time_t query_start_in_secs() const {
+    return start_time.tv_sec; 
+  }
   my_timeval query_start_timeval_trunc(uint decimals);
   void set_time();
   void set_time(const struct timeval *t) {

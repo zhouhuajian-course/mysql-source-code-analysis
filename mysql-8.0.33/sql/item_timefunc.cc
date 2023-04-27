@@ -1667,8 +1667,11 @@ bool Item_func_unix_timestamp::itemize(Parse_context *pc, Item **res) {
 */
 bool Item_func_unix_timestamp::val_timeval(my_timeval *tm) {
   assert(fixed == 1);
+  // 如果参数数量为0 没有参数 SELECT UNIT_TIMESTAMP();
   if (arg_count == 0) {
+    // tm->m_tv_sec 设置为 当前线程 查询 开始时间 最后取的是这个值
     tm->m_tv_sec = current_thd->query_start_in_secs();
+    // tm->m_tv_usec 设置为 0
     tm->m_tv_usec = 0;
     return false;  // no args: null_value is set in constructor and is always 0.
   }

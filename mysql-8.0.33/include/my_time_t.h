@@ -41,7 +41,9 @@ typedef my_time_t int64_t;
   we need to convert between representations but mostly the struct is only used
   internally by MySQL so we can use our own.
 */
+// 时间值结构体
 struct my_timeval {
+  // 8字节整数
   int64_t m_tv_sec;
   int64_t m_tv_usec;
 };
