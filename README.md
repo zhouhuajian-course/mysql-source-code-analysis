@@ -9,6 +9,124 @@ https://dev.mysql.com/doc/refman/8.0/en/
 https://dev.mysql.com/doc/dev/mysql-server/latest/  
 (Related Documentation -> MySQL 8.0 Source Code Documentation)  
 
+## MySQL 源码规范
+
+1. 项目名使用小写+短横线 例如 mysql-8.0.33
+2. 模块名/目录名使用小写+短横线或下划线 或者 首字母大写 例如 mysql-test doxygen_resources Docs
+3. 文件名使用 小写+下划线，头文件.h C++文件.cc
+4. 类名使用首字母大写+下划线 例如 Service_visitor Select_lex_visitor List_iterator
+5. 函数名使用下划线命名 例如 wild_compare
+6. 方法名使用下划线命名 例如 create_result_table init_json_table_col_lists
+7. 变量名使用下划线命名 例如 current_nest_idx current_thd
+8. 枚举值使用大写字母下划线命名 例如 JTC_ORDINALITY
+
+## MySQL 启动 初始化 停止 源码分析
+
+
+
+## SQL
+
+执行一条 SQL 其实就是执行一条命令，这样更能理解底层，  
+避免使用 SQL 查询，推荐使用 执行 SQL 命令
+
+## 优化器
+
+一条 SQL 可以使用多种方案得到相同的结果，  
+MySQL 会为 SQL 分析出多种执行方案，选择成本最少的执行方案执行
+
+Cost-Based Optimizer 基于成本的优化器
+
+这里的成本有 CPU预测 内存预测 硬盘预测 外部库预测等
+
+要计算成本需要有相关的统计数据，如果没有统计数据，可能要靠已有的信息进行猜测，当然可能会猜错
+
+## 查询缓存
+
+哈希表，SQL 大小写、注释等任意字符不一样，缓存就无法击中，  
+表数据和表结构的增删改都会让这个表的缓存全部失效，  
+所以会被频繁操作的表，例如频繁写入，缓存意义不是很大   
+读多写少的表，缓存作用就比较大，省去分析、优化、执行等繁琐操作
+
+SELECT 语句可指定是否使用缓存
+
+mysql 8.0 去掉了 查询缓存
+
+## 可插拔式的表存储引擎
+
+Server层 存储引擎层
+
+每个存储引擎都有统一的一套接口，需要实现每个接口，如果个别接口该存储引擎没这功能，留空即可。
+
+Server层也是有大量相关的接口，直接调用具体存储引擎的实现。
+
+**InnoDB**
+
+按照页的方式管理硬盘，默认16K
+
+mysql 5.5 开始，默认 InnoDB 
+
+## SELECT COUNT(*) FROM `table` 源码分析
+
+断点位置 
+
+storage\innobase\row\row0mysql.cc row_mysql_parallel_select_count_star
+
+执行SQL 
+
+SELECT COUNT(*) FROM student;
+
+调用栈
+
+```c++
+// 并行 select count *
+row_mysql_parallel_select_count_star(trx_t * trx, std::vector<dict_index_t*, std::allocator<dict_index_t*> > & indexes, size_t n_threads, ulint * n_rows) (storage\innobase\row\row0mysql.cc:4360)
+// 为 mysql 扫描索引
+row_scan_index_for_mysql(row_prebuilt_t * prebuilt, dict_index_t * index, size_t max_threads, bool check_keys, ulint * n_rows) (storage\innobase\row\row0mysql.cc:4588)
+ha_innobase::records(ha_innobase * const this, ha_rows * num_rows) (storage\innobase\handler\ha_innodb.cc:16617)
+// 从这里开始进入引擎层
+handler::ha_records(handler * const this, ha_rows * num_rows) (sql\handler.h:5237)
+// 获取精确的记录计数
+get_exact_record_count(QEP_TAB * qep_tab, uint table_count, int * error) (sql\iterators\ref_row_iterators.cc:858)
+// 使用UnqualifiedCount迭代器
+UnqualifiedCountIterator::Read(UnqualifiedCountIterator * const this) (sql\iterators\ref_row_iterators.cc:880)
+Query_expression::ExecuteIteratorQuery(Query_expression * const this, THD * thd) (sql\sql_union.cc:1770)
+Query_expression::execute(Query_expression * const this, THD * thd) (sql\sql_union.cc:1823)
+Sql_cmd_dml::execute_inner(Sql_cmd_dml * const this, THD * thd) (sql\sql_select.cc:799)
+Sql_cmd_dml::execute(Sql_cmd_dml * const this, THD * thd) (sql\sql_select.cc:578)
+mysql_execute_command(THD * thd, bool first_level) (sql\sql_parse.cc:4714)
+dispatch_sql_command(THD * thd, Parser_state * parser_state) (sql\sql_parse.cc:5363)
+dispatch_command(THD * thd, const COM_DATA * com_data, enum_server_command command) (sql\sql_parse.cc:2050)
+do_command(THD * thd) (sql\sql_parse.cc:1439)
+handle_connection(void * arg) (sql\conn_handler\connection_handler_per_thread.cc:302)
+pfs_spawn_thread(void * arg) (storage\perfschema\pfs.cc:3042)
+libpthread.so.0!start_thread (Unknown Source:0)
+libc.so.6!clone (Unknown Source:0)
+```
+
+```c++
+继续往后走，可以调试出
+
+n_rows
+  0x7fffac6f5ec8
+    *n_rows: 6
+
+student表的总数为 6
+```
+
+```c++
+
+```
+
+性能
+
+COUNT(*) = COUNT(1) > COUNT(`主键`) > COUNT(`某非主键字段`)
+
+COUNT(*) COUNT(1)    不需要具体取值，效率最高
+COUNT(`主键`)        不需要具体取值，默认认为主键里面的值不为NULL，但会有一些额外过程
+COUNT(`某非主键字段`) 需要判断 值是否为 NULL，不为NULL才加+，所以需要具体取值，性能最低
+
+InnoDB引擎 默认4个线程 并行 统计 有参数可调
+
 ## 聚集索引/辅助索引
 
 ```
@@ -57,6 +175,7 @@ _From Internet_
 
 1. MySQL 采用单进程多线程架构 （ps -ef | grep mysql | grep -v grep）
 2. InnoDB 数据即索引，索引即数据
+3. 连接非常昂贵，尽量使用长连接，长期不用尽快断开
 
 ## MySQL 安装目录
 
@@ -100,63 +219,6 @@ ibdata file
 ```
 
 _From Internet_
-
-## SELECT COUNT(*) FROM `table` 源码分析
-
-断点位置 
-
-storage\innobase\row\row0mysql.cc row_mysql_parallel_select_count_star
-
-执行SQL 
-
-SELECT COUNT(*) FROM student;
-
-调用栈
-
-```c++
-// 并行 select count *
-row_mysql_parallel_select_count_star(trx_t * trx, std::vector<dict_index_t*, std::allocator<dict_index_t*> > & indexes, size_t n_threads, ulint * n_rows) (storage\innobase\row\row0mysql.cc:4360)
-// 为 mysql 扫描索引
-row_scan_index_for_mysql(row_prebuilt_t * prebuilt, dict_index_t * index, size_t max_threads, bool check_keys, ulint * n_rows) (storage\innobase\row\row0mysql.cc:4588)
-ha_innobase::records(ha_innobase * const this, ha_rows * num_rows) (storage\innobase\handler\ha_innodb.cc:16617)
-// 从这里开始进入引擎层
-handler::ha_records(handler * const this, ha_rows * num_rows) (sql\handler.h:5237)
-get_exact_record_count(QEP_TAB * qep_tab, uint table_count, int * error) (sql\iterators\ref_row_iterators.cc:858)
-// 使用UnqualifiedCount迭代器
-UnqualifiedCountIterator::Read(UnqualifiedCountIterator * const this) (sql\iterators\ref_row_iterators.cc:880)
-Query_expression::ExecuteIteratorQuery(Query_expression * const this, THD * thd) (sql\sql_union.cc:1770)
-Query_expression::execute(Query_expression * const this, THD * thd) (sql\sql_union.cc:1823)
-Sql_cmd_dml::execute_inner(Sql_cmd_dml * const this, THD * thd) (sql\sql_select.cc:799)
-Sql_cmd_dml::execute(Sql_cmd_dml * const this, THD * thd) (sql\sql_select.cc:578)
-mysql_execute_command(THD * thd, bool first_level) (sql\sql_parse.cc:4714)
-dispatch_sql_command(THD * thd, Parser_state * parser_state) (sql\sql_parse.cc:5363)
-dispatch_command(THD * thd, const COM_DATA * com_data, enum_server_command command) (sql\sql_parse.cc:2050)
-do_command(THD * thd) (sql\sql_parse.cc:1439)
-handle_connection(void * arg) (sql\conn_handler\connection_handler_per_thread.cc:302)
-pfs_spawn_thread(void * arg) (storage\perfschema\pfs.cc:3042)
-libpthread.so.0!start_thread (Unknown Source:0)
-libc.so.6!clone (Unknown Source:0)
-```
-
-```c++
-继续往后走，可以调试出
-
-n_rows
-  0x7fffac6f5ec8
-    *n_rows: 6
-
-student表的总数为 6
-```
-
-性能
-
-COUNT(*) = COUNT(1) > COUNT(`主键`) > COUNT(`某非主键字段`)
-
-COUNT(*) COUNT(1)    不需要具体取值，效率最高
-COUNT(`主键`)        不需要具体取值，默认认为主键里面的值不为NULL，但会有一些额外过程
-COUNT(`某非主键字段`) 需要判断 值是否为 NULL，不为NULL才加+，所以需要具体取值，性能最低
-
-InnoDB引擎 默认4个线程 并行 统计 有参数可调
 
 ## SELECT UNIX_TIMESTAMP(); 源码分析
 

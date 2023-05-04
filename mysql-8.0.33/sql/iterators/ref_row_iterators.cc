@@ -844,6 +844,7 @@ bool AlternativeIterator::Init() {
         But with the new function 'end_send_count' in the execution phase,
         such an error should be properly returned so that it can be raised.
 */
+// 获取精确的记录计数
 static ulonglong get_exact_record_count(QEP_TAB *qep_tab, uint table_count,
                                         int *error) {
   ulonglong count = 1;
