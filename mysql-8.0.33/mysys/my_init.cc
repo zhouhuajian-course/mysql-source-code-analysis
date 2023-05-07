@@ -121,7 +121,8 @@ int set_crt_report_leaks() {
 #endif
 
 /**
-  Initialize my_sys functions, resources and variables
+  Initialize my_sys functions, resources and variables 
+  初始化 系统函数 资源 和 变量
 
   @return Initialization result
     @retval false Success
@@ -129,15 +130,15 @@ int set_crt_report_leaks() {
 */
 bool my_init() {
   char *str;
-
+  // 如果初始化已完成
   if (my_init_done) return false;
-
+  // 初始化已完成
   my_init_done = true;
 
 #if defined(MY_MSCRT_DEBUG)
   set_crt_report_leaks();
 #endif
-
+  // 默认的 umask 新文件权限 新目录权限
   my_umask = 0640;     /* Default umask for new files */
   my_umask_dir = 0750; /* Default umask for new directories */
 
@@ -147,12 +148,13 @@ bool my_init() {
   /* Default creation of new dir's */
   if ((str = getenv("UMASK_DIR")) != nullptr)
     my_umask_dir = (int)(atoi_octal(str) | 0700);
-
+  // 线程全局初始化
   if (my_thread_global_init()) return true;
-
+  // 线程初始化
   if (my_thread_init()) return true;
 
   /* $HOME is needed early to parse configuration files located in ~/ */
+  // 用户家目录 /root
   if ((home_dir = getenv("HOME")) != nullptr)
     home_dir = intern_filename(home_dir_buff, home_dir);
 
@@ -162,7 +164,7 @@ bool my_init() {
 #ifdef _WIN32
     my_win_init();
 #endif
-    MyFileInit();
+    MyFileInit();  // 文件初始化
 
     DBUG_PRINT("exit", ("home: '%s'", home_dir));
     return false;

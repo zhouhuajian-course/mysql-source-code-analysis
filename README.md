@@ -19,10 +19,35 @@ https://dev.mysql.com/doc/dev/mysql-server/latest/
 6. 方法名使用下划线命名 例如 create_result_table init_json_table_col_lists
 7. 变量名使用下划线命名 例如 current_nest_idx current_thd
 8. 枚举值使用大写字母下划线命名 例如 JTC_ORDINALITY
+9. 函数返回值 0表示成功 大于0表示出现错误 例如 if (my_init()) { 错误处理... }
+10. 宏常量使用 大写字母下划线命名 例如 #define MYSQL_PORT 3306     #define MYSQL_CONFIG_NAME "my"
+
+## 改完用户权限、用户设置等 为什么要 FLUSH PRIVILEGES
+
+TODO
 
 ## MySQL 启动 初始化 停止 源码分析
 
-
+```c++
+进程 mysqld
+  线程 main
+    sql/main.cc - main
+    sql/mysqld.cc - mysqld_main 7237
+    sql/mysqld.cc - substitute_progpath 替换程序路径 为 绝对路径
+    sql/mysqld.cc - calculate_mysql_home_from_my_progname 根据绝对路径计算家目录
+    mysys/my_init.cc - my_init
+    mysys/my_default.cc - load_defaults 加载配置文件 加载命令行配置 等
+    sql/set_var.cc - sys_var_init 系统变量初始化 
+    sql/log.cc - init_error_log 初始化错误日志
+    sql/mysqld.cc - adjust_related_options 调整相关选项 例如打开文件数限制、最大连接数 
+    sql/mysqld.cc - my_init_signals 初始化信号处理 例如 SIGTERM SIGHUP SIGQUIT 等
+    sql/mysqld.cc - network_init 网络初始化 绑定端口 监听 接受客户端连接 ...
+    sql/tztime.cc - my_tz_init 时区初始化
+    sql/auth/sql_auth_cache.cc - grant_init 权限初始化
+    sql/mysqld.cc - start_signal_handler 启动信号处理器 使用单独线程处理信号
+    mysqld_socket_acceptor->connection_event_loop(); 连接 时间循环 处理客户端连接
+    ...
+```
 
 ## SQL
 

@@ -7056,8 +7056,11 @@ static void set_super_read_only_post_init() {
 }
 
 static void calculate_mysql_home_from_my_progname() {
+
   const std::string runtime_output_directory_addon{
       "/runtime_output_directory/"};
+
+// Windows平台或者苹果XCODE编辑器
 #if defined(_WIN32) || defined(APPLE_XCODE)
   /* Allow Win32 users to move MySQL anywhere */
   char prg_dev[FN_REFLEN];
@@ -7089,6 +7092,7 @@ static void calculate_mysql_home_from_my_progname() {
   // fprintf(stderr, "mysql_home %s\n", mysql_home);
   // fflush(stderr);
 #else
+  // 临时环境 MySQL 
   const char *tmpenv = getenv("MY_BASEDIR_VERSION");
   if (tmpenv != nullptr) {
     strmake(mysql_home, tmpenv, sizeof(mysql_home) - 1);
@@ -7233,6 +7237,11 @@ int win_main(int argc, char **argv)
 int mysqld_main(int argc, char **argv)
 #endif
 {
+  // argc=3
+  // argv[0]="/mysql-source-code-analysis/build/bin/mysqld"
+  // argv[1]="--user=mysql"
+  // argv[2]="--datadir=/mysql-source-code-analysis/build/data"
+
   // Substitute the full path to the executable in argv[0]
   substitute_progpath(argv);
   sysd::notify_connect();
@@ -7242,7 +7251,9 @@ int mysqld_main(int argc, char **argv)
     Perform basic thread library and malloc initialization,
     to be able to read defaults files and parse options.
   */
+  // mysql 程序名 程序路径 argv[0]=/mysql-source-code-analysis/build/bin/mysqld
   my_progname = argv[0];
+  // 从程序路径算出mysql家目录 记录在 mysql_home_ptr "/mysql-source-code-analysis/build/"
   calculate_mysql_home_from_my_progname();
 
 #ifndef _WIN32
@@ -7250,7 +7261,7 @@ int mysqld_main(int argc, char **argv)
   pre_initialize_performance_schema();
 #endif /*WITH_PERFSCHEMA_STORAGE_ENGINE */
   // For windows, my_init() is called from the win specific mysqld_main
-  if (my_init())  // init my_sys library & pthreads
+  if (my_init())  // init my_sys library & pthreads 初始化
   {
     LogErr(ERROR_LEVEL, ER_MYINIT_FAILED);
     flush_error_log_messages();
@@ -7262,6 +7273,7 @@ int mysqld_main(int argc, char **argv)
   orig_argv = argv;
   my_getopt_use_args_separator = true;
   my_defaults_read_login_file = false;
+  // 加载默认配置 最开始的配置
   if (load_defaults(MYSQL_CONFIG_NAME, load_default_groups, &argc, &argv,
                     &argv_alloc)) {
     flush_error_log_messages();
@@ -7307,7 +7319,7 @@ int mysqld_main(int argc, char **argv)
   remaining_argc = argc;
   remaining_argv = argv;
 
-  init_variable_default_paths();
+  init_variable_default_paths();  
 
   int heo_error;
 
@@ -7317,13 +7329,14 @@ int mysqld_main(int argc, char **argv)
   */
   init_pfs_instrument_array();
 #endif /* WITH_PERFSCHEMA_STORAGE_ENGINE */
-
+  // 处理早期选项
   heo_error = handle_early_options();
 
   init_sql_statement_names();
   ulong requested_open_files = 0;
 
   //  Init error log subsystem. This does not actually open the log yet.
+  // 初始化错误日志
   if (init_error_log()) unireg_abort(MYSQLD_ABORT_EXIT);
   if (!opt_validate_config) adjust_related_options(&requested_open_files);
 
@@ -7979,6 +7992,7 @@ int mysqld_main(int argc, char **argv)
   }
 
   if (init_ssl_communication()) unireg_abort(MYSQLD_ABORT_EXIT);
+  // 网络初始化
   if (network_init()) unireg_abort(MYSQLD_ABORT_EXIT);
 
 #ifdef _WIN32
@@ -8058,7 +8072,7 @@ int mysqld_main(int argc, char **argv)
    to be used by ACL objects.
   */
   if (opt_initialize) init_acl_memory();
-
+  // 初始化时区 权限初始化
   if (abort || my_tz_init((THD *)nullptr, default_tz_name, opt_initialize) ||
       grant_init(opt_noacl)) {
     set_connection_events_loop_aborted(true);
@@ -8120,6 +8134,7 @@ int mysqld_main(int argc, char **argv)
 
 #ifndef _WIN32
   //  Start signal handler thread.
+  // 启动信号处理器
   start_signal_handler();
 #endif
   if (opt_authentication_policy &&
@@ -8233,6 +8248,7 @@ int mysqld_main(int argc, char **argv)
   }
 
   mysqld_socket_acceptor->check_and_spawn_admin_connection_handler_thread();
+  // 连接 时间循环 处理客户端连接
   mysqld_socket_acceptor->connection_event_loop();
 #endif /* _WIN32 */
   server_operational_state = SERVER_SHUTTING_DOWN;
