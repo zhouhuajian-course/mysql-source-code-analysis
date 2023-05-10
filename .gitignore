@@ -6,6 +6,6 @@
 /build2
 /build3
 
-/cpp-manual
+/cpp-*
 /MySQL8.x.md
 /GDB.md

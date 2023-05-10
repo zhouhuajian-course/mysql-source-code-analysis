@@ -22,6 +22,258 @@ https://dev.mysql.com/doc/dev/mysql-server/latest/
 9. 函数返回值 0表示成功 大于0表示出现错误 例如 if (my_init()) { 错误处理... }
 10. 宏常量使用 大写字母下划线命名 例如 #define MYSQL_PORT 3306     #define MYSQL_CONFIG_NAME "my"
 
+## 自增ID 源码分析
+
+表自增ID
+
+断点 sql/handler.cc - compute_next_insert_id （sql说明id是Server层计算，而不是引擎层）
+
+mysql> insert into db1.tb1 values (null);
+ERROR 1062 (23000): Duplicate entry '4294967295' for key 'tb1.PRIMARY'
+
+```c++
+// row 插入 error是DB_DUPLICATE_KEY
+error = row_insert_for_mysql((byte *)record, m_prebuilt);
+// 设置下一个插入ID
+set_next_insert_id(compute_next_insert_id(nr, variables));
+
+// 计算下一个插入ID 算出来的是 4294967296
+compute_next_insert_id(ulonglong nr, System_variables * variables) (sql\handler.cc:3580)
+handler::update_auto_increment(handler * const this) (sql\handler.cc:3840)
+ha_innobase::write_row(ha_innobase * const this, uchar * record) (storage\innobase\handler\ha_innodb.cc:9023)
+handler::ha_write_row(handler * const this, uchar * buf) (sql\handler.cc:7953)
+write_record(THD * thd, TABLE * table, COPY_INFO * info, COPY_INFO * update) (sql\sql_insert.cc:2160)
+Sql_cmd_insert_values::execute_inner(Sql_cmd_insert_values * const this, THD * thd) (sql\sql_insert.cc:629)
+Sql_cmd_dml::execute(Sql_cmd_dml * const this, THD * thd) (sql\sql_select.cc:578)
+mysql_execute_command(THD * thd, bool first_level) (sql\sql_parse.cc:3683)
+dispatch_sql_command(THD * thd, Parser_state * parser_state) (sql\sql_parse.cc:5363)
+dispatch_command(THD * thd, const COM_DATA * com_data, enum_server_command command) (sql\sql_parse.cc:2050)
+do_command(THD * thd) (sql\sql_parse.cc:1439)
+handle_connection(void * arg) (sql\conn_handler\connection_handler_per_thread.cc:302)
+pfs_spawn_thread(void * arg) (storage\perfschema\pfs.cc:3042)
+libpthread.so.0!start_thread (Unknown Source:0)
+libc.so.6!clone (Unknown Source:0)
+```
+
+mysql 有很多自增ID 
+
+1. 表自增ID (如果超过，会回退到最大，如果最大已有，报Duplicate entry错误)
+2. 没有提供表自增ID时，mysql额外加上的自增ID row_id、 
+3. trx_id 事务ID (如果超过，从0开始)
+4. Xid
+5. 线程的ID
+6. 表的编号ID
+7. binlog日志文件的ID
+
+如果超过最大怎么办？一般两种解决思路，不再增长，报错，或者继续从0开始增长
+
+```sql
+create database db1;
+use db1;
+create table tb1 (a int unsigned not null auto_increment, primary key (a)) auto_increment=4294967295;
+-- auto_increment=4294967295 表示第一次或新插入的ID是4294967295，然后在自增...
+-- 无符号整数 最大 4294967296 - 1 = 4294967296
+insert into tb1 values (null);
+-- Query OK, 1 row affected (0.02 sec)
+insert into tb1 values (null);
+-- ERROR 1062 (23000): Duplicate entry '4294967295' for key 'tb1.PRIMARY'
+```
+
+
+表无自增ID，被mysql加上的隐藏的自增ID row_id 
+
+(貌似innodb引擎才会，其他引擎待验证是否会加上row_id)
+
+断点打在 storage/innobase/row/row0ins.cc - row_ins_alloc_row_id_step
+
+```sql
+use db1;
+create table tb2 (a int);
+insert into tb2 values (1);
+insert into tb2 values (2);
+-- 证明多张表共用row_id
+create table tb3 (a int);
+insert into tb3 values (1);
+```
+
+```c++
+// 行插入分配行ID 分配的row_id是513 多张表共用row_id 例如
+// tb2插入时的row_id时513
+// tb3插入时的row_id是514
+// 获取新的row_id
+row_id = dict_sys_get_new_row_id();
+
+row_ins_alloc_row_id_step(ins_node_t * node) (storage\innobase\row\row0ins.cc:3465)
+row_ins(ins_node_t * node, que_thr_t * thr) (storage\innobase\row\row0ins.cc:3538)
+row_ins_step(que_thr_t * thr) (storage\innobase\row\row0ins.cc:3681)
+row_insert_for_mysql_using_ins_graph(const byte * mysql_rec, row_prebuilt_t * prebuilt) (storage\innobase\row\row0mysql.cc:1585)
+row_insert_for_mysql(const byte * mysql_rec, row_prebuilt_t * prebuilt) (storage\innobase\row\row0mysql.cc:1715)
+ha_innobase::write_row(ha_innobase * const this, uchar * record) (storage\innobase\handler\ha_innodb.cc:9063)
+handler::ha_write_row(handler * const this, uchar * buf) (sql\handler.cc:7953)
+write_record(THD * thd, TABLE * table, COPY_INFO * info, COPY_INFO * update) (sql\sql_insert.cc:2160)
+Sql_cmd_insert_values::execute_inner(Sql_cmd_insert_values * const this, THD * thd) (sql\sql_insert.cc:629)
+Sql_cmd_dml::execute(Sql_cmd_dml * const this, THD * thd) (sql\sql_select.cc:578)
+mysql_execute_command(THD * thd, bool first_level) (sql\sql_parse.cc:3683)
+dispatch_sql_command(THD * thd, Parser_state * parser_state) (sql\sql_parse.cc:5363)
+dispatch_command(THD * thd, const COM_DATA * com_data, enum_server_command command) (sql\sql_parse.cc:2050)
+do_command(THD * thd) (sql\sql_parse.cc:1439)
+handle_connection(void * arg) (sql\conn_handler\connection_handler_per_thread.cc:302)
+pfs_spawn_thread(void * arg) (storage\perfschema\pfs.cc:3042)
+libpthread.so.0!start_thread (Unknown Source:0)
+libc.so.6!clone (Unknown Source:0)
+```
+
+## 源码目录补充
+
+最重要的两个目录  
+1. sql Server层的代码主要在这
+2. storage 引擎层的代码主要在这
+
+storage/innobase  
+storage/myisam  
+storage/csv  
+
+增删改查...
+
+sql/sql_insert.cc
+sql/sql_delete.cc
+sql/sql_update.cc
+sql/sql_select.cc
+...  
+
+## 表存储引擎分析
+
+```
+
+```
+
+## 监听端口 客户端连接源码分析
+
+```c++
+进程 mysqld
+  线程 main
+    sql/main.cc - main
+    sql/mysqld.cc - mysqld_main 7237   
+    sql/mysqld.cc - network_init 
+    sql/conn_handler/socket_connection.cc - Mysqld_socket_listener::Mysqld_socket_listener  创建 Mysqld_socket_listener 提供 绑定地址 TCP端口 admin绑定地址 adminTCP端口 backlog等 例如 3306 33062 151  
+    sql/conn_handler/connection_acceptor.h - Connection_acceptor::Connection_acceptor 创建连接Acceptor
+    mysqld_socket_acceptor->init_connection_acceptor() 初始化
+    Mysqld_socket_listener::setup_listener() 设置listener 创建服务端socket
+      mysql_socket.fd = socket(domain, type, protocol);  创建socket
+    mysqld_socket_acceptor->connection_event_loop(); 连接 事件循环 处理客户端连接
+
+     /**
+    Connection acceptor loop to accept connections from clients.
+  */
+  void connection_event_loop() {
+    Connection_handler_manager *mgr =
+        Connection_handler_manager::get_instance();
+    while (!connection_events_loop_aborted()) {
+      Channel_info *channel_info = m_listener->listen_for_connection_event();
+      if (channel_info != nullptr) mgr->process_new_connection(channel_info);
+    }
+  }
+
+  Channel_info *Mysqld_socket_listener::listen_for_connection_event() {
+#ifdef HAVE_POLL
+  int retval = poll(&m_poll_info.m_fds[0], m_socket_vector.size(), -1);
+#else
+  m_select_info.m_read_fds = m_select_info.m_client_fds;
+  // select 等待事件发生
+  int retval = select((int)m_select_info.m_max_used_connection,
+                      &m_select_info.m_read_fds, 0, 0, 0);  
+
+
+  // 客户端连接 mysql -h 127.0.0.1
+  
+  // 有新客户端连接后 处理新连接
+  if (channel_info != nullptr) mgr->process_new_connection(channel_info);
+  // 如果不是admin，是普通用户，检查是否超过最大连接数
+  bool Connection_handler_manager::check_and_incr_conn_count
+  // 添加新连接
+  m_connection_handler->add_connection(channel_info)
+  // 397行
+  Per_thread_connection_handler::add_connection(Channel_info *channel_info)
+  // 检查空闲线程，如果有空闲线程用空闲线程
+  check_idle_thread_and_enqueue_connection(channel_info)
+  // 创建线程或使用空闲线程 处理客户端，每个客户端一个线程
+  mysql_thread_create(key_thread_one_connection, &id, &connection_attrib,
+                          handle_connection, (void *)channel_info);
+  // 在专门处理这个客户端的线程，执行handle_connection
+  static void *handle_connection(void *arg)                        
+  // 生成一个thd对象
+  THD *thd = init_new_thd(channel_info);       
+  // 设置线程拥有者
+  mysql_socket_set_thread_owner(socket);
+  // 把thd加入到thd_manager
+  thd_manager->add_thd(thd);
+  // do command 执行命令 当线程连接活跃时 
+  // 命令执行循环
+  while (thd_connection_alive(thd)) {
+    if (do_command(thd)) break;
+  }                 
+  // 分发命令
+  return_value = dispatch_command(thd, &com_data, command);
+
+  // 在do_command里面
+  // 如果没命令了，会一直等待命令到来，不会让CPU空转，事件驱动
+  // 有新命令来，则执行命令
+  thd->m_server_idle = true;
+  // 这个get_command会阻塞
+  rc = thd->get_protocol()->get_command(&com_data, &command);
+  thd->m_server_idle = false;
+
+  // 如果因为某些原因，要断开连接了 end_connection close_connection
+   if (thd_prepare_connection(thd))
+      handler_manager->inc_aborted_connects();
+    else {
+      while (thd_connection_alive(thd)) {
+        if (do_command(thd)) break;
+      }
+      end_connection(thd);
+    }
+    close_connection(thd, 0, false, false);
+```    
+
+https://dev.mysql.com/doc/extending-mysql/8.0/en/mysql-threads.html
+
+Connection manager threads associate each client connection with a thread dedicated to it that handles authentication and request processing for that connection. Manager threads create a new thread when necessary but try to avoid doing so by consulting the thread cache first to see whether it contains a thread that can be used for the connection. When a connection ends, its thread is returned to the thread cache if the cache is not full.
+
+One-Thread-Per-Connection 模型与 Pool-Threads模型
+
+MySQL每个连接使用一个线程，另外还有内部处理线程、特殊用途的线程、以及所有存储引擎创建的线程。-- 《高性能MySQL》
+
+默认的线程处理模型是对每个客户端连接都创建一个线程，  
+一个客户端对应一个线程，一个线程与一个客户端绑定，  
+也可以选择使用其他线程处理模型，Pool-Threads 处理模型  
+线程池默认是关闭的，要开启这个功能，需要启动实例时指定参数  --thread-handling=pool-of-threads。  
+
+## ORDER BY 源码分析
+
+```sql
+SELECT * FROM student ORDER BY name ASC;
+```
+
+```c++
+filesort(THD * thd, Filesort * filesort, RowIterator * source_iterator, table_map tables_to_get_rowid_for, ha_rows num_rows_estimate, Filesort_info * fs_info, Sort_result * sort_result, ha_rows * found_rows) (sql\filesort.cc:382)
+SortingIterator::DoSort(SortingIterator * const this) (sql\iterators\sorting_iterator.cc:531)
+SortingIterator::Init(SortingIterator * const this) (sql\iterators\sorting_iterator.cc:444)
+Query_expression::ExecuteIteratorQuery(Query_expression * const this, THD * thd) (sql\sql_union.cc:1763)
+Query_expression::execute(Query_expression * const this, THD * thd) (sql\sql_union.cc:1823)
+Sql_cmd_dml::execute_inner(Sql_cmd_dml * const this, THD * thd) (sql\sql_select.cc:799)
+Sql_cmd_dml::execute(Sql_cmd_dml * const this, THD * thd) (sql\sql_select.cc:578)
+mysql_execute_command(THD * thd, bool first_level) (sql\sql_parse.cc:4714)
+dispatch_sql_command(THD * thd, Parser_state * parser_state) (sql\sql_parse.cc:5363)
+dispatch_command(THD * thd, const COM_DATA * com_data, enum_server_command command) (sql\sql_parse.cc:2050)
+do_command(THD * thd) (sql\sql_parse.cc:1439)
+handle_connection(void * arg) (sql\conn_handler\connection_handler_per_thread.cc:302)
+pfs_spawn_thread(void * arg) (storage\perfschema\pfs.cc:3042)
+libpthread.so.0!start_thread (Unknown Source:0)
+libc.so.6!clone (Unknown Source:0)
+```
+
+会预测成本/开销，选择最优，会根据阈值，选择内存临时表，还是磁盘临时表等...
+
 ## 改完用户权限、用户设置等 为什么要 FLUSH PRIVILEGES
 
 TODO
@@ -45,7 +297,7 @@ TODO
     sql/tztime.cc - my_tz_init 时区初始化
     sql/auth/sql_auth_cache.cc - grant_init 权限初始化
     sql/mysqld.cc - start_signal_handler 启动信号处理器 使用单独线程处理信号
-    mysqld_socket_acceptor->connection_event_loop(); 连接 时间循环 处理客户端连接
+    mysqld_socket_acceptor->connection_event_loop(); 连接 事件循环 处理客户端连接
     ...
 ```
 
