@@ -9,6 +9,20 @@ https://dev.mysql.com/doc/refman/8.0/en/
 https://dev.mysql.com/doc/dev/mysql-server/latest/  
 (Related Documentation -> MySQL 8.0 Source Code Documentation)  
 
+
+
+## MySQL Schema vs Database
+
+Schema 和 Database 是类似的概念，貌似是一个可相互替换的词汇
+
+## MySQL Routine Procedure Function
+
+https://dev.mysql.com/doc/refman/8.0/en/information-schema-routines-table.html
+
+Stored Routines 包括 Stored Procedures 和 Stored Functions
+
+中文名 存储例程 存储过程 存储函数
+
 ## MySQL 源码规范
 
 1. 项目名使用小写+短横线 例如 mysql-8.0.33
@@ -753,8 +767,8 @@ $ ./bin/mysql -h 127.0.0.1 -e "SELECT version();"
 4. 运行 build.sh，第一次编译时，建议一个一个地运行 build.sh 里面的命令
 根据报错提示 安装对应依赖 并在需要时，修改环境变量PATH (/etc/profile)
 yum install devtoolset-11-gcc devtoolset-11-gcc-c++ devtoolset-11-binutils   (留意/opt/rh/devtoolset-11)
-yum install openssl openssl-devel  
-yum install ncurses-devel  
+yum install -y openssl openssl-devel  
+yum install -y  ncurses-devel  
 5. 参考 build.sh 做后续初始化操作
 6. ./bin/mysqld --defaults-file=./test/etc/my.cnf --initialize-insecure
 2023-04-25T03:38:57.422401Z 0 [System] [MY-013169] [Server] /mysql-source-code-analysis/build/runtime_output_directory/mysqld (mysqld 8.0.33-debug) initializing of server in progress as process 71824
