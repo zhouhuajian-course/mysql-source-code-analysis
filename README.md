@@ -9,6 +9,73 @@ https://dev.mysql.com/doc/refman/8.0/en/
 https://dev.mysql.com/doc/dev/mysql-server/latest/  
 (Related Documentation -> MySQL 8.0 Source Code Documentation)  
 
+## innodb行格式
+
+https://dev.mysql.com/doc/refman/8.0/en/innodb-row-format.html
+
+innodb_default_row_format 默认行格式 dynamic
+
+Table 15.15 InnoDB Row Format Overview
+
+----------------------------
+|Row Format|	Compact Storage Characteristics|	Enhanced Variable-Length Column Storage|	Large Index Key Prefix Support|	Compression Support|	Supported Tablespace Types|
+|---|---|---|---|---|---|
+|REDUNDANT	|No	  |No	  |No	  |No	  |system, file-per-table, general|
+|COMPACT	  |Yes	|No	  |No	  |No	  |system, file-per-table, general|
+|DYNAMIC	  |Yes	|Yes	|Yes	|No	  |system, file-per-table, general|
+|COMPRESSED	|Yes	|Yes	|Yes	|Yes	|file-per-table, general|
+
+```sql
+mysql> show variables like '%innodb_%';
++------------------------------------------+------------------------+
+| Variable_name                            | Value                  |
++------------------------------------------+------------------------+
+
+| innodb_default_row_format                | dynamic                |
+
++------------------------------------------+------------------------+
+179 rows in set (0.00 sec)
+mysql> show table status\G
+ERROR 1046 (3D000): No database selected
+mysql> show table status from test\G
+*************************** 1. row ***************************
+           Name: tb1
+         Engine: InnoDB
+        Version: 10
+     Row_format: Dynamic
+           Rows: 2
+ Avg_row_length: 8192
+    Data_length: 16384
+Max_data_length: 0
+   Index_length: 0
+      Data_free: 0
+ Auto_increment: NULL
+    Create_time: 2023-05-18 15:30:47
+    Update_time: 2023-05-18 15:31:36
+     Check_time: NULL
+      Collation: utf8mb4_0900_ai_ci
+       Checksum: NULL
+ Create_options: 
+        Comment: 
+1 row in set (0.00 sec)
+```
+
+## innodb_page_size
+
+默认 16k
+
+16384 / 1024 = 16
+
+```sql
+mysql> show variables like 'innodb_page_size';
++------------------+-------+
+| Variable_name    | Value |
++------------------+-------+
+| innodb_page_size | 16384 |
++------------------+-------+
+1 row in set (0.02 sec)
+```
+
 ## mysql客户端执行命令
 
 \! shell-command (需要有一个空格)
