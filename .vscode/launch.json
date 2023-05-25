@@ -8,7 +8,8 @@
       "program": "/mysql-source-code-analysis/build/bin/mysqld",
       "args": [
         "--user=mysql",
-        "--datadir=/mysql-source-code-analysis/build/data"
+        "--datadir=/mysql-source-code-analysis/build/data",
+        "--binlog-format=ROW"
       ],
       "stopAtEntry": true,
       "environment": [],

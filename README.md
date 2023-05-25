@@ -1,5 +1,115 @@
 # MySQL 8.x 源码分析
 
+## SQL语句类型
+
+1. create 创建
+2. insert 插入
+3. select 选择
+4. show 展示
+5. flush 冲走
+6. explain 解释
+7. describe 描述
+8. alter 修改
+9. update 更新
+10. delete 删除
+11. grant 授权
+12. use 使用
+13. load data 加载
+14. truncate table 截断
+15. 
+
+## binary log 实际调试
+
+binlog_format  ROW  
+
+```
+data目录下binlog.index最后的内容是
+./binlog.000029
+./binlog.000030
+./binlog.000031 
+启动mysqld，会生成新的binlog文件 binlog.000032
+mysql客户端执行创建表的操作
+mysql> create table t1 (c1 int, c2 double);
+Query OK, 0 rows affected (0.06 sec)
+
+binlog.000032就会记录下这个操作
+... ... create table t1 (c1 int, c2 double) 然后确实是二进制内容。
+有些人说可以直接看到sql，其实存储的不是二进制，这种说法不对，因为sql的二进制内容，是字符串，刚好能够显示出来，其他很多内容还是乱码不可读的二进制内容。
+
+```
+
+binlog_format  STATEMENT 测试  
+
+```
+启动参数增加 --binlog-format=STATEMENT
+
+mysql> create table t2 (c1 int, c2 double);
+Query OK, 0 rows affected (0.05 sec)
+
+cat binlog.00033 内容类似，其他内容大部分都是不可读的二进制内容
+... ... create table t2 (c1 int, c2 double)
+```
+
+## the binary log 二进制日志
+
+1. 记录修改数据的语句，也用来主从复制
+2. 二进制日志会被flushed，当大小达到 max_binlog_size 默认1G
+3. 二进制日志包含事件"events"，这些事件描述数据库修改，例如表创建、修改表数据等
+4. 也会记录潜在的可能修改数据的事件，例如DELETE没有匹配任何行，除非row-based记录方式被使用。（这里可能说，DELETE虽然没有匹配任何行，但传输到从节点，可能会删除一些能匹配的行。）
+5. 二进制日志也会包含每条语句花费的时间；
+6. 二进制日志有两个重要目录，第一个是，复制，提供给副本执行，达到主从数据一致。第二个是，特定数据恢复操作，当一个备份保存后，二进制日志是备份之后的events记录。 (增量恢复)
+7. 二进制日志，不用来记录select show等不修改数据的事件
+8. 开启二进制日志，会让性能稍微下降。但副本和恢复好处更多，相比于性能下降。
+9. 语句中的密码会被特殊处理
+10. mysql 8.0.14开始，二进制日志和延迟日志能够被加密，避免敏感数据泄漏，需要binlog_encryption设置为on
+11. 默认开启，log_bin默认ON。例外情况，如果用mysqld加上--initialize或者--initialize-insecure去初始化数据目录，二进制日志默认关闭，但你能够使用--log-bin指定开启
+12. 要关闭，可以在启动时，指定--skip-log-bin或者disable-log-bin选项，如果指定了前面说的，又指定--log-bin，那么后者生效
+13.  --log-slave-updates and --slave-preserve-commit-order这两个参数跟二进制开启有关；
+14. --log-bin[=base_name]可以指定基本名，默认binlog作为基本名。为了和早期版本兼容，--log-bin没带字符串或带了空字符串，基本名默认是 host_name-bin，使用了主机机器名. 推荐指定名字，因为如果主机名修改了，你还能很方便地继续用这些二进制日志。如果指定了扩展名，例如--log-bin=base_name.extension，扩展名会被移除和忽略
+15. mysqld追加数字扩展名到二进制日志基本名，每次服务器创建新的日志文件，数字就会增加，为了创建有序的系列文件and ordered series of files。创建新文件，会当任意一个这些事件发生，1. 服务器启动或重启；2. 服务端flush日志；3. 当当前日志文件大小达到max_binlog_size。原话 1. The server is started or restarted; 2.The server flushes the logs; 3. The size of the current log file reaches max_binlog_size.
+16. 二进制日志可能比max_binlog_size大，如果正在进行很大的事务操作，因为一个事务会被当成整体写入到日志，永远不会被拆分到多个文件。
+17. 为了追踪那个二进制日志已经被用过了，mysqld会创建二进制日志索引文件，这个文件包含二进制文件的路径。默认基础名一样，后缀是.index。可以通过 --log-bin-index[=file_name] 指定索引文件。不应该运行期间手动修改，这样子可能会让mysqld confused
+18. 术语 “binary log file”表示一个有数字的二进制日志文件。"binary log"表示一系列有数字的二进制文件和索引文件index file
+19. 默认放在数据目录，也可以指定到其他目录
+20. mysql 5.7 必须指定server_id才能有二进制日志，mysql 8.0 server_id默认是1，所以可以不需要特地指定。但是如果要进行主从复制，需要手动指定，每个server唯一的server_id
+21. 二进制日志签名相关参数 binlog_checksum source_verify_checksum replica_sql_verify_checksum...
+22. event记录的格式，由binary logging format决定。三种，row-based logging, statement-based logging and mixed-base logging.
+23. reset master，删除所有二进制文件，或者 PURGE BINARY LOGS.
+24. 如果有副本，不应该删除旧的二进制文件，直到你确保没有副本需要用到它们。
+25. mysqlbinlog工具能够展示二进制文件内容。对于恢复数据非常有用，例如$> mysqlbinlog log_file | mysql -h server_name。mysqlbinlog也能展示副本relay log的内容。因为relay log的格式跟binary log格式一样。
+26. 二进制日志会在一个语句或事务完成后马上记录，但在任何锁释放和任何提交完成之前。这个保证了日志记录是the log is logged in commit order。非事务表，语句执行后，马上记录。如果是未提交的事务，所有修改会被缓存知道COMMIT语句到达服务器。这种情况，mysqld会写整个事务到binary log在commit执行前。(不是太理解，多看原文)
+27. binlog_cache_size 控制分配的buffer大小，如果语句比较大，线程会开启一个临时文件去存储事务。线程结束时，临时文件会被删除。
+28.  Binlog_cache_use  Binlog_cache_disk_use   max_binlog_cache_size 缓存相关参数
+29. 默认同步写入磁盘sync_binlog=1。如果不同步，当出现崩溃，最后的语句可能会丢失。最安全的值是sync_binlog=1，但也是最慢的。
+30. In MySQL 8.0, InnoDB support for two-phase commit in XA transactions is always enabled. 两阶段提交
+31. the latest binary log file 最新的二进制日志文件
+
+**其他**
+
+1.  --binlog-format=ROW. row-based logging默认。受影响的表行还会记录events
+2. --binlog-format=STATEMENT statement-based logging. 主从复制时比较有用。
+3. --binlog-format=MIXED mixed logging。这个模式 statement-based会被默认使用，但会自动切换为 row-based模式，如果出现以下情况 
+4. mysql 8.0开始 二进制日志默认开启，除非指定 --skip-log-bin or --disable-log-bin启动参数。
+5. binlog format可以运行时切换，例如SET GLOBAL binlog_format = 'STATEMENT'; 'ROW'; 'MIXED'; 独立的客户都安可以控制他自己的语句格式，通过设置SET SESSION binlog_format = 'STATEMENT'; 'ROW'; 'MIXED'; 有些情况不能切换，例如1. function或trigger里面不能切换 2. NDB存储引擎开启时不能切换； 3. ... 。但是可以设置持久化only，不会修改运行时，但重启时会生效。use PERSIST_ONLY (SET @@PERSIST_ONLY.binlog_format)。不推荐运行时切换。涉及主从，最好一开始就统一使用同一个种格式。后期切换格式，需要考虑，是否会造成解析问题。
+6. 设置row格式，一些修改使用row格式，但有一些修改依然会使用statement格式，例如所有DDL语句  CREATE TABLE, ALTER TABLE, or DROP TABLE.
+7. --binlog-row-event-max-size 行事件最大大小
+8. mixed格式，statement格式自动切换为row格式，当出现1. 一个函数包含UUID() 2. ...
+9. 8.0.20开始，支持事务压缩 默认关闭 binlog_transaction_compression binlog_transaction_compression_level_zstd 压缩等级，越高压缩越好，但越占用cpu时间。有些情况不会使用压缩，即使开启。事务压缩只用在row格式，statement格式不能压缩。 
+10. SHOW BINLOG EVENTS and SHOW RELAYLOG EVENTS statements
+
+## mysqld日志 mysql server logs
+
+1. the error log 错误日志。启动、运行、停止mysqld错误日志
+2. the general query log 通用查询日志，"记录客户端连接/断开连接，记录客户端每一个SQL"。当你怀疑某个客户端可能在发错误的指令，但你想知道具体是那个客户端，这种日志就非常有用。平时不开启，影响性能。
+3. the binary log 二进制日志
+4. the slow query log 慢查询日志
+5. the relay log 延迟日志 从一个主节点接收的数据修改 （只用在副本）
+6. the DDL log(metadata log) 元数据操作日志 DDL语句
+
+可以在运行期间控制 通用查询日志和慢查询日志，开启/关闭日志或修改日志名(路径)。可以告诉server写通用查询日志/慢查询日志到日志表或日志文件或两者都用。
+
+## 相关链接
+
 https://www.mysql.com/  
 
 https://dev.mysql.com/downloads/mysql/  
