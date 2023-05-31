@@ -1,5 +1,179 @@
 # MySQL 8.x 源码分析
 
+## 使用新的binlog文件条件
+
+1. The server is started or restarted (重启后，会执行一次FLUSH LOGS)
+2. The server flushes the logs. (手动执行FLUSH LOGS，例如直接执行或mysqldump -F)
+3. The size of the current log file reaches max_binlog_size. (当前binlog文件等于或大于max_binlog_size，event不拆分到多个binlog文件，所以可能大于)
+
+## mysqlbinlog 补充
+
+1. By default, mysqlbinlog displays row events encoded as base-64 strings using BINLOG statements.  row事件 编码为 base-64字符串，使用BINLOG 语句；
+2. BINLOG 'fAS3SBMBAAAALAAAANoAAAAAABEAAAAAAAAABHRlc3QAAXQAAwMPCgIUAAQ=fAS3SBcBAAAAKAAAAAIBAAAQABEAAAAAAAEAA//8AQAAAAVhcHBsZQ=='
+3. 使用--verbose or -v，可以看到“pseudo-SQL” statements作为注释### INSERT INTO test.t### SET###   @1=1 ###   @2='apple' ###   @3=NULL。不会显示原始的SQL语句。元素列名丢失，替换为@N，N时列号
+4. Specify --verbose or -v twice。$> mysqlbinlog -vv log_file。会显示数据类型和一些元数据，还有日志事件信息等
+5. binlog备份 mysqlbinlog和mysqldump结合https://dev.mysql.com/doc/refman/8.0/en/mysqlbinlog-backup.html --read-from-remote-server  --to-last-log  --stop-never --connection-server-id ...
+
+## mysqlbinlog 补充
+
+1. 如果由旧的备份backup，可以使用mysqlbinlog和mysql结合，进行恢复数据
+2. 可以先输出到临时文件，修改特定的语句，再提供给mysql执行 mysqlbinlog binlog.000001 > tmpfile ... edit tmpfile ... mysql -u root -p < tmpfil
+3. 可以提供 --start-position option，那么只会展示大于等于这个位置的事件（大于，是指必须要匹配一个事件的开始）可以执行具体结束时间，--stop-datetime option ，例如指向恢复到今天10:30分的数据库数据，后面的数据丢弃
+4. 如果要执行多个binlog恢复，那么需要在一个连接中同时执行，多个连接执行不安全，例如mysqlbinlog binlog.[0-9]* | mysql -u root -p，再例如mysqlbinlog binlog.000001 binlog.000002 | mysql -u root -p
+不安全的原因是，可能binlog里面有创建临时表的语句，关闭连接后，第二个连接使用临时表会出现未知表的问题。或者写入到临时文件，再统一执行 mysqlbinlog binlog.000001 >  /tmp/statements.sql mysqlbinlog binlog.000002 >> /tmp/statements.sql mysql -u root -p -e "source /tmp/statements.sql"
+5.  LOAD DATA operation操作要留意，可能有文件路径问题，仔细查阅官网
+6. --hexdump
+7. 
+
+## mysqlbinlog mysql
+
+```sql
+mysql> use db1;
+Database changed
+mysql> desc tb1;
++-------+-------------+------+-----+---------+-------+
+| Field | Type        | Null | Key | Default | Extra |
++-------+-------------+------+-----+---------+-------+
+| col1  | int         | YES  |     | NULL    |       |
+| col2  | varchar(20) | YES  |     | NULL    |       |
++-------+-------------+------+-----+---------+-------+
+2 rows in set (0.00 sec)
+mysql> insert into tb1 values (1, 'xiaoming');
+Query OK, 1 row affected (0.00 sec)
+
+-- 此时 tb1 只有一条记录，如果执行 mysqlbinlog binlog.000012 | mysql -h127.0.0.1 -uroot -proot
+-- 那么 会再次执行 insert into tb1 values (1, 'xiaoming');
+-- tb1 会有两条记录
+mysql> select * from tb1;
++------+----------+
+| col1 | col2     |
++------+----------+
+|    1 | xiaoming |
+|    1 | xiaoming |
++------+----------+
+2 rows in set (0.00 sec)
+
+-- 如果再次执行，会再次执行两次 insert into tb1 values (1, 'xiaoming');，会有四条记录
+mysql> select * from tb1;
++------+----------+
+| col1 | col2     |
++------+----------+
+|    1 | xiaoming |
+|    1 | xiaoming |
+|    1 | xiaoming |
+|    1 | xiaoming |
++------+----------+
+```
+
+## client mysql mysqlbinlog ... 配置组
+
+mysql mysqlbinlog 等客户端都会读取 [client] 的配置，同时读取名字跟自己相同的配置组，例如[mysql] [mysqlbinlog] ...
+
+## mysqlbinlog
+
+1. 处理binary log文件的工具
+2. binary log由多个文件组成，里面包含events，这些事件描述对数据库内容的修改
+3. server写这些事件用二进制格式，要展示这些内容用文本格式，可以使用mysqlbinlog工具。也能展示relay log文件，因为它跟binlog格式一样。
+4. mysqlbinlog [options] log_file ...
+5. 例如要显示binlog.000003的内容，mysqlbinlog binlog.000003。输出内容会包含binlog.000003里面的事件events。
+6. 对于statement-based二进制日志，事件包含SQL、ServerId、执行的timestamp、执行时间...，对于row-based二进制日志，事件指示一行的修改，而不是一个SQL语句
+7. 事件会被添加头部注释，以提供额外信息例如 # at 141 #100309  9:28:36 server id 123  end_log_pos 245 Query thread_id=3350  exec_time=11  error_code=0。第一行 at后的数字指示这文件offset或者起始位置。第二行 开始是日期和事件指示语句开始时间。server id。end_log_pos表示下一个事件开始位置。它是当前事件结束位置+1.thread_id 表示那个线程执行这个事件。exec_time执行时间。error_code 表示执行结果，0表示没有错误发生。
+8. mysqlbinlog的output是可再执行的，例如作为mysql的input，去redo语句。这样可以方便recovery。
+9. mysqlbinlo可以读取远程的binlog， from a remote server by using the --read-from-remote-server option. 要远程读取，--host, --password, --port, --protocol, --socket, and --user.可能需要提供
+10. 二进制日志是否加密，可通过show binary logs查看，或根据文件头部的magic number, encrypted log files (0xFD62696E), which differs from that used for unencrypted log files (0xFE62696E)
+11. 查看大的binary log 留意文件系统是否空间足够。配置mysqlbinlog使用的临时文件目录  To configure the directory that mysqlbinlog uses for temporary files, use the TMPDIR environment variable.
+12. mysqlbinlog读取mysqlbinlog和client的配置
+
+```sql
+mysql>  SHOW BINARY LOGS;
++---------------+-----------+-----------+
+| Log_name      | File_size | Encrypted |
++---------------+-----------+-----------+
+| binlog.000001 | 353851267 | No        |
+| binlog.000002 |       157 | No        |
+| binlog.000003 |  75264913 | No        |
+| binlog.000004 | 156637050 | No        |
+| binlog.000005 |       180 | No        |
+| binlog.000006 | 104633961 | No        |
+| binlog.000007 |       157 | No        |
+| binlog.000008 |      2431 | No        |
+| binlog.000009 |       157 | No        |
+| binlog.000010 |       339 | No        |
++---------------+-----------+-----------+
+10 rows in set (0.00 sec)
+```
+
+解析后的可读的内容
+
+```shell
+$ mysqlbinlog binlog.000010 
+# The proper term is pseudo_replica_mode, but we use this compatibility alias
+# to make the statement usable on server versions 8.0.24 and older.
+/*!50530 SET @@SESSION.PSEUDO_SLAVE_MODE=1*/;
+/*!50003 SET @OLD_COMPLETION_TYPE=@@COMPLETION_TYPE,COMPLETION_TYPE=0*/;
+DELIMITER /*!*/;
+# at 4
+#230526  4:56:41 server id 1  end_log_pos 126 CRC32 0x5d0d85ff  Start: binlog v 4, server v 8.0.33 created 230526  4:56:41 at startup
+# Warning: this binlog is either in use or was not closed properly.
+ROLLBACK/*!*/;
+BINLOG '
+ictvZA8BAAAAegAAAH4AAAABAAQAOC4wLjMzAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAACJy29kEwANAAgAAAAABAAEAAAAYgAEGggAAAAICAgCAAAACgoKKioAEjQA
+CigAAf+FDV0=
+'/*!*/;
+# at 126
+#230526  4:56:41 server id 1  end_log_pos 157 CRC32 0x4ebd8318  Previous-GTIDs
+# [empty]
+# at 157
+#230526  4:58:37 server id 1  end_log_pos 234 CRC32 0xba3bfbce  Anonymous_GTID  last_committed=0        sequence_number=1       rbr_only=no    original_committed_timestamp=1685048317321517   immediate_commit_timestamp=1685048317321517     transaction_length=182
+# original_commit_timestamp=1685048317321517 (2023-05-26 04:58:37.321517 CST)
+# immediate_commit_timestamp=1685048317321517 (2023-05-26 04:58:37.321517 CST)
+/*!80001 SET @@session.original_commit_timestamp=1685048317321517*//*!*/;
+/*!80014 SET @@session.original_server_version=80033*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80033*//*!*/;
+SET @@SESSION.GTID_NEXT= 'ANONYMOUS'/*!*/;
+# at 234
+#230526  4:58:37 server id 1  end_log_pos 339 CRC32 0x03a33762  Query   thread_id=9     exec_time=0     error_code=0    Xid = 4
+SET TIMESTAMP=1685048317/*!*/;
+SET @@session.pseudo_thread_id=9/*!*/;
+SET @@session.foreign_key_checks=1, @@session.sql_auto_is_null=0, @@session.unique_checks=1, @@session.autocommit=1/*!*/;
+SET @@session.sql_mode=1168113696/*!*/;
+SET @@session.auto_increment_increment=1, @@session.auto_increment_offset=1/*!*/;
+/*!\C utf8mb4 *//*!*/;
+SET @@session.character_set_client=255,@@session.collation_connection=255,@@session.collation_server=255/*!*/;
+SET @@session.lc_time_names=0/*!*/;
+SET @@session.collation_database=DEFAULT/*!*/;
+/*!80011 SET @@session.default_collation_for_utf8mb4=255*//*!*/;
+/*!80016 SET @@session.default_table_encryption=0*//*!*/;
+create database db2
+/*!*/;
+SET @@SESSION.GTID_NEXT= 'AUTOMATIC' /* added by mysqlbinlog */ /*!*/;
+DELIMITER ;
+# End of log file
+/*!50003 SET COMPLETION_TYPE=@OLD_COMPLETION_TYPE*/;
+/*!50530 SET @@SESSION.PSEUDO_SLAVE_MODE=0*/;
+```
+
+## 用systemd管理mysql服务器
+
+1. 如果用rpm或debian包安装，server startup and shutdown可以通过systemd来管理
+2. 如果使用通过二进制发布包安装，可以手动配置systemd支持
+3. 如果源码包安装，通过配置 -DWITH_SYSTEMD=1 CMake option，添加systemd支持
+4. 有些情况mysqld_safe没被安装，因为mysqld_safe能处理server重启，但是systemd提供了同样的能力。应为systemd有能力管理mysql多实例，mysqld_multi和mysqld_multi.server不是必须的，并且没被安装
+5. $> systemctl {start|stop|restart|status} mysqld systemd提供自动mysql启动和关闭，也能够手动管理，通过systemctl
+6. $> service mysqld {start|stop|restart|status} 兼容 System V 系统，可替换的方式是 使用 service命令（参数反转）
+7. systemctl或service,如果mysql服务名不是mysqld，那么使用合适的名字，例如mysql
+
+
+## mysqld_safe vs mysqld
+
+1. mysqld_safe是在unix上启动mysqld的推荐方式，它添加了一些安全特性，例如当错误出现时重启服务，记录运行信息到一个错误日志
+2. 对于一些linux平台，mysql通过RPM或Debian包安装，包含systemd支持，管理mysql的startup和shutdown. 在这些平台，mysqld_safe是没有安装的，因为没有必要. For more information, see Section 2.5.9, “Managing MySQL Server with systemd”.
+3. mysqld_safe会尝试启动mysqld. 可通过a --mysqld or --mysqld-version option指定mysqld. 
+4. 很多选项mysqld_safe和mysqld一样。
+5. 会读取eads all options from the [mysqld], [server], and [mysqld_safe] sections in option files. 为了兼容性，也读取 [safe_mysqld]
+6. 
+
 ## SQL语句类型
 
 1. create 创建
@@ -16,7 +190,7 @@
 12. use 使用
 13. load data 加载
 14. truncate table 截断
-15. 
+15. binlog ...
 
 ## binary log 实际调试
 
