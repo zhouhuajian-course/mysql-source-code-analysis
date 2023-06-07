@@ -1,5 +1,71 @@
 # MySQL 8.x 源码分析
 
+## binlog 超过 999999 之后
+
+```shell
+依然+1  
+
+mysql> RESET MASTER TO 999999;
+Query OK, 0 rows affected (0.00 sec)
+mysql> FLUSH BINARY LOGS;
+Query OK, 0 rows affected (0.00 sec)
+
+-rw-r-----. 1 mysql mysql      157 Jun  7 18:27 binlog.1000000
+-rw-r-----. 1 mysql mysql      202 Jun  7 18:27 binlog.999999
+-rw-r-----. 1 mysql mysql	    33 Jun  7 18:27 binlog.index
+```
+
+
+
+## binlog 常用操作
+
+```sql
+https://dev.mysql.com/doc/refman/8.0/en/show-master-status.html
+SHOW MASTER STATUS
+
+https://dev.mysql.com/doc/refman/8.0/en/show-variables.html
+SHOW [GLOBAL | SESSION] VARIABLES
+    [LIKE 'pattern' | WHERE expr]
+
+https://dev.mysql.com/doc/refman/8.0/en/show-binary-logs.html
+SHOW BINARY LOGS
+SHOW MASTER LOGS
+
+https://dev.mysql.com/doc/refman/8.0/en/set-variable.html
+SET variable = expr [, variable = expr] ...
+
+variable: {
+    user_var_name
+  | param_name
+  | local_var_name
+  | {GLOBAL | @@GLOBAL.} system_var_name
+  | {PERSIST | @@PERSIST.} system_var_name
+  | {PERSIST_ONLY | @@PERSIST_ONLY.} system_var_name
+  | [SESSION | @@SESSION. | @@] system_var_name
+}
+
+https://dev.mysql.com/doc/refman/8.0/en/flush.html
+FLUSH BINARY LOGS
+
+https://dev.mysql.com/doc/refman/8.0/en/reset.html
+RESET reset_option [, reset_option] ...
+
+reset_option: {
+    MASTER
+  | REPLICA
+  | SLAVE
+}
+
+https://dev.mysql.com/doc/refman/8.0/en/reset-master.html
+RESET MASTER [TO binary_log_file_index_number]
+
+https://dev.mysql.com/doc/refman/8.0/en/show-binlog-events.html
+SHOW BINLOG EVENTS
+   [IN 'log_name']
+   [FROM pos]
+   [LIMIT [offset,] row_count]
+```
+
 ## 使用新的binlog文件条件
 
 1. The server is started or restarted (重启后，会执行一次FLUSH LOGS)
