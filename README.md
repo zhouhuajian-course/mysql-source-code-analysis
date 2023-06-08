@@ -1,5 +1,10 @@
 # MySQL 8.x 源码分析
 
+## InnoDB 事务 补充
+
+> In InnoDB, all user activity occurs inside a transaction.
+> https://dev.mysql.com/doc/refman/8.0/en/innodb-autocommit-commit-rollback.html
+
 ## binlog 超过 999999 之后
 
 ```shell
