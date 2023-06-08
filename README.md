@@ -24,19 +24,19 @@ Query OK, 0 rows affected (0.00 sec)
 
 ## binlog 常用操作
 
-```sql
-https://dev.mysql.com/doc/refman/8.0/en/show-master-status.html
+```mysql
+-- https://dev.mysql.com/doc/refman/8.0/en/show-master-status.html
 SHOW MASTER STATUS
 
-https://dev.mysql.com/doc/refman/8.0/en/show-variables.html
+-- https://dev.mysql.com/doc/refman/8.0/en/show-variables.html
 SHOW [GLOBAL | SESSION] VARIABLES
     [LIKE 'pattern' | WHERE expr]
 
-https://dev.mysql.com/doc/refman/8.0/en/show-binary-logs.html
+-- https://dev.mysql.com/doc/refman/8.0/en/show-binary-logs.html
 SHOW BINARY LOGS
 SHOW MASTER LOGS
 
-https://dev.mysql.com/doc/refman/8.0/en/set-variable.html
+-- https://dev.mysql.com/doc/refman/8.0/en/set-variable.html
 SET variable = expr [, variable = expr] ...
 
 variable: {
@@ -49,10 +49,10 @@ variable: {
   | [SESSION | @@SESSION. | @@] system_var_name
 }
 
-https://dev.mysql.com/doc/refman/8.0/en/flush.html
+-- https://dev.mysql.com/doc/refman/8.0/en/flush.html
 FLUSH BINARY LOGS
 
-https://dev.mysql.com/doc/refman/8.0/en/reset.html
+-- https://dev.mysql.com/doc/refman/8.0/en/reset.html
 RESET reset_option [, reset_option] ...
 
 reset_option: {
@@ -61,16 +61,21 @@ reset_option: {
   | SLAVE
 }
 
-----------
-
-https://dev.mysql.com/doc/refman/8.0/en/reset-master.html
+-- https://dev.mysql.com/doc/refman/8.0/en/reset-master.html
 RESET MASTER [TO binary_log_file_index_number]
 
-https://dev.mysql.com/doc/refman/8.0/en/show-binlog-events.html
+    Important
+    The effects of RESET MASTER without the TO clause differ from those of PURGE BINARY LOGS in 2 key ways:
+    1. RESET MASTER removes all binary log files that are listed in the index file, leaving only a single, empty binary log file with a numeric suffix of .000001, whereas the numbering is not reset by PURGE BINARY LOGS.
+    2. RESET MASTER is not intended to be used while any replicas are running. The behavior of RESET MASTER when used while replicas are running is undefined (and thus unsupported), whereas PURGE BINARY LOGS may be safely used while replicas are running.
+
+-- https://dev.mysql.com/doc/refman/8.0/en/show-binlog-events.html
 SHOW BINLOG EVENTS
    [IN 'log_name']
    [FROM pos]
    [LIMIT [offset,] row_count]
+   
+   Shows the events in the binary log. If you do not specify 'log_name', the first binary log is displayed.
 ```
 
 ## 使用新的binlog文件条件
