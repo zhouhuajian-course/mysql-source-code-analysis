@@ -56,6 +56,8 @@ reset_option: {
   | SLAVE
 }
 
+----------
+
 https://dev.mysql.com/doc/refman/8.0/en/reset-master.html
 RESET MASTER [TO binary_log_file_index_number]
 
@@ -1124,6 +1126,9 @@ COUNT(`主键`)        不需要具体取值，默认认为主键里面的值不
 COUNT(`某非主键字段`) 需要判断 值是否为 NULL，不为NULL才加+，所以需要具体取值，性能最低
 
 InnoDB引擎 默认4个线程 并行 统计 有参数可调
+
+> https://dev.mysql.com/doc/refman/8.0/en/aggregate-functions.html#function_count
+> InnoDB handles SELECT COUNT(*) and SELECT COUNT(1) operations in the same way. There is no performance difference.
 
 ## 聚集索引/辅助索引
 
