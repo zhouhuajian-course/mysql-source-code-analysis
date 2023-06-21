@@ -45,6 +45,58 @@ CigAAcxt08o=
 '/*!*/;
 ```
 
+## 大端字节序 小端字节序
+
+```shell
+
+$ lscpu
+Architecture:          x86_64
+CPU op-mode(s):        32-bit, 64-bit
+Byte Order:            Little Endian  (字节序 小端字节序)
+CPU(s):                1
+On-line CPU(s) list:   0
+Thread(s) per core:    1
+Core(s) per socket:    1
+Socket(s):             1
+NUMA node(s):          1
+Vendor ID:             AuthenticAMD
+CPU family:            25
+Model:                 80
+Model name:            AMD Ryzen 5 5625U with Radeon Graphics
+Stepping:              0
+CPU MHz:               2295.624
+BogoMIPS:              4591.24
+Hypervisor vendor:     VMware
+Virtualization type:   full
+L1d cache:             32K
+L1i cache:             32K
+L2 cache:              512K
+L3 cache:              16384K
+NUMA node0 CPU(s):     0
+Flags:                 fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 syscall nx mmxext fxsr_opt pdpe1gb rdtscp lm constant_tsc art rep_good nopl tsc_reliable nonstop_tsc extd_apicid eagerfpu pni pclmulqdq ssse3 fma cx16 sse4_1 sse4_2 x2apic movbe popcnt aes xsave avx f16c rdrand hypervisor lahf_lm cr8_legacy abm sse4a misalignsse 3dnowprefetch osvw topoext retpoline_amd ssbd ibpb vmmcall fsgsbase bmi1 avx2 smep bmi2 erms invpcid rdseed adx smap clflushopt clwb sha_ni xsaveopt xsavec xgetbv1 clzero arat umip vaes vpclmulqdq overflow_recov succor
+```
+
+1. 目前了解，大端和小端主要是存储整数数字时的区分，例如2字节整数、4字节整数、8字节整数，存储字符串，还是按左到右依次存储
+2. 不管大端小端，字符串8.0.33存储为0x 38 2e 30 2e 33 33
+3. 暂时不清楚大端小端对浮点数的存储影响
+4. 大端模式，big-endian。低地址存高位字节。符合人类认知，类似字符串。  
+   小端模式，little-endian。低地址存地位字节。符合机器认知。  
+   例如四字节整数，1，大端模式 0x 00 00 00 01，小端模式0x 01 00 00 00  
+   例如四字节整数 0x12345678，大端模式0x12 34 56 78，小端模式0x78 56 34 12
+5. 大小端没有谁优谁劣，各自优势是对方劣势。  
+   大端模式，符号位判断固定为第一个字节，容易判断正负  
+   小端模式，强制转换数据不需要调整字节内容，1,2,4字节存储方式一样
+6. 一般通讯协议都是大端，操作系统都是小端
+7. 常见CPU字节序  
+   Big Endian: PowerPC、IBM、Sun  
+   Little Endian: x86、DEC  
+   ARM既可以工作在大端模式，也可以工作在小端模式
+8. 常见文件的字节序  
+   Big Endian: Adobe PS, JPEG, MacPaint  
+   Little Endian: BMP, GIF, RTF  
+   Variable：DXF(AutoCAD)
+9. 另外 Java和网络通讯协议都是大端字节序
+   
 ## MySQL 字符串 字面量 String Literals
 
 https://dev.mysql.com/doc/refman/8.0/en/string-literals.html
