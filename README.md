@@ -36,6 +36,75 @@ https://dev.mysql.com/doc/dev/mysql-server/latest/page_protocol_replication_binl
 
 BINLOG 语句。https://dev.mysql.com/doc/refman/8.0/en/binlog.html
 
+```sql
+# base64加密，可以方便数据的传输，尤其是当数据里面有ASCII控制字符或非ASCII字符时。
+BINLOG '
+qO+KZA/KAAAAegAAAH4AAAAAAAQAOC4wLjMzAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAEwANAAgAAAAABAAEAAAAYgAEGggAAAAICAgCAAAACgoKKioAEjQA
+CigAAcxt08o=
+'/*!*/;
+```
+
+## MySQL 字符串 字面量 String Literals
+
+https://dev.mysql.com/doc/refman/8.0/en/string-literals.html
+
+1. 一个字符串时一个字节或字符序列。可以在single quote或double quoute里面。
+2. 'a string' "another string"
+3. 相邻的引起来的字符串会被拼接为一个字符串。'a string'和'a' ' ' 'string'是相等的。
+4. 如果ANSI_QUOTES开启，只能单引号。因为双引号字符串会被解析为标识符identifier而不是字符串。
+5. 二进制字符串a binary string是字节字符串。每个字节串有binary字符集。非字节串是字符串，字符集不是binary。
+6. 字符字符串和字节字符串，比较，都是基于字符串单元的数字值。
+7. 一个字符字符串，有可选的字符集和校对规则设置 character set and collation。  
+   [_charset_name]'string' [COLLATE collation_name]  
+   SELECT _latin1'string';  
+   SELECT _binary'string';  
+   SELECT _utf8mb4'string' COLLATE utf8mb4_danish_ci;  
+8. 可以使用N'literal' (or n'literal')创建国际字符集的字符串。下面三个语句等价。
+   SELECT N'some text';  
+   SELECT n'some text';  
+   SELECT _utf8'some text';  
+9. 除非NO_BACKSLASH_ESCAPES的SQL模式被开启，在字符串里面特定序列certain sequences有特殊含义。这些序列一反斜线\开始。  
+   其他转移序列反斜线会被忽略。例如\x就是x  
+   这些序列大小写敏感。例如\b退格符 \B就是B  
+   常见转移序列 \' \" \n \r \t \\ \% \_(这两个用在模式匹配，避免成为通配符，但如果不是用在模式匹配，他们等同于\% \_而不是%和_)
+10. 有几种方式可以在字符串里面放置引号  
+    单引号字符串里面用''，表示一个'  
+    双引号字符串里面用""，表示一个"  
+    使用转移序列\' \"  
+    单引号字符串里面放"，双引号字符串里面放'，无需写两个或转移，无需特殊处理
+    ```text
+    mysql> SELECT 'hello', '"hello"', '""hello""', 'hel''lo', '\'hello';
+    +-------+---------+-----------+--------+--------+
+    | hello | "hello" | ""hello"" | hel'lo | 'hello |
+    +-------+---------+-----------+--------+--------+
+    
+    mysql> SELECT "hello", "'hello'", "''hello''", "hel""lo", "\"hello";
+    +-------+---------+-----------+--------+--------+
+    | hello | 'hello' | ''hello'' | hel"lo | "hello |
+    +-------+---------+-----------+--------+--------+
+    
+    mysql> SELECT 'This\nIs\nFour\nLines';
+    +--------------------+
+    | This
+    Is
+    Four
+    Lines |
+    +--------------------+
+    
+    mysql> SELECT 'disappearing\ backslash';
+    +------------------------+
+    | disappearing backslash |
+    +------------------------+
+    
+    mysql> select '\A\%\_\B';
+    +--------+
+    | A\%\_B |
+    +--------+
+    | A\%\_B |
+    +--------+
+    ```    
+
 ## MySQL 注释 Comments
 
 1. 支持三种注释风格
@@ -73,7 +142,7 @@ BINLOG 语句。https://dev.mysql.com/doc/refman/8.0/en/binlog.html
 8. 多行注释/* ... */ 里面不支持\c  \q等short-form的mysql客户端命令。  
     但在/*! ... */ 和 /*+ ... */ 单行注释里面支持。
 
-总结：支持5种注释，单行注释`#` 单行注释，中间必须有一个空白字符，`--` 多行注释 `/* */` 单行注释，兼容不同SQL服务器`/*! */` 单行注释，影响优化器优化策略`/*+ */`。
+总结：支持5种注释，单行注释`#` 单行注释，中间必须有一个空白字符，`--` 多行注释 `/* */` 单行注释，mysql特有，执行注释里面命令，其他sql服务器应该会略 `/*![版本号] */` 单行注释，影响优化器优化策略`/*+ */`。
 
 ## 火焰图 Flame Graph
 
