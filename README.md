@@ -1,5 +1,89 @@
 # MySQL 8.x 源码分析
 
+## Binlog 补充
+
+binlog, relaylog 前面 4个字节的 magic number
+
+https://dev.mysql.com/doc/refman/8.0/en/replication-binlog-encryption.html  
+https://dev.mysql.com/doc/refman/8.0/en/mysqlbinlog.html
+
+Encrypted and unencrypted binary log files can be distinguished using the magic number at the start of the file header for encrypted log files (0xFD62696E), which differs from that used for unencrypted log files (0xFE62696E).
+
+https://dev.mysql.com/doc/dev/mysql-server/latest/page_protocol_replication.html  
+https://dev.mysql.com/doc/dev/mysql-server/latest/page_protocol_replication.html#sect_protocol_replication_binlog_file_header  
+https://dev.mysql.com/doc/dev/mysql-server/latest/page_protocol_replication_binlog_event.html  
+
+**mysql 数据复制 协议 Replication Protocol**
+
+1， 数据复制使用binlog，来将master完成的修改传递到slave
+2. Binlog文件以Binlog File Header文件头开始，后面是一些系列的Binlog Event
+3. Binlog File Header是[0xFE 'bin']。0xFE62 696E (ASCII码0xfe->254不在ascci码里unicode里是þ竖线中间半圆,0x62->b,0x69->i,0x6E->n)
+    ```shell
+    $ hexdump -C binlog.000001 | head -n 3
+    00000000  fe 62 69 6e c0 97 89 64  0f 01 00 00 00 7a 00 00  |.bin...d.....z..|
+    00000010  00 7e 00 00 00 00 00 04  00 38 2e 30 2e 33 33 00  |.~.......8.0.33.|
+    00000020  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
+    $  hexdump -C centos-relay-bin.000010 | head -n 3
+    00000000  fe 62 69 6e ac d4 8a 64  0f ca 00 00 00 7a 00 00  |.bin...d.....z..|
+    00000010  00 7e 00 00 00 40 00 04  00 38 2e 30 2e 33 33 00  |.~...@...8.0.33.|
+    00000020  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
+    ```   
+4. Events包含实际要从master传输到slave的数据。
+5. 第一个事件，是START_EVENT_V3或者是FORMAT_DESCRIPTION_EVENT，最后一个事件是STOP_EVENT或者ROTATE_EVENT
+6. FORMAT_DESCRIPTION_EVENT是binlog Version 4，binlog第四版的第一个事件，MySQL 5.0.0+，Added in MySQL 5.0.0 as a replacement for START_EVENT_V3。这个事件描述了其他事件放置的方式
+7. ROTATE_EVENT。轮换事件。The rotate event is added to the binlog as last event to tell the reader what binlog to request next.
+
+
+BINLOG 语句。https://dev.mysql.com/doc/refman/8.0/en/binlog.html
+
+## MySQL 注释 Comments
+
+1. 支持三种注释风格
+2. 第一种，#字符到行末尾
+3. 第二种，-- 到行末尾。double-dash。这种风格的注释，第二个-后面必须跟着至少一个空白字符或控制字符，例如空格、Tab、newline或其他控制字符。这个语法跟标准SQL注释语法有稍微的不同。
+4. 第三种，/* */，像C语言的注释。可以单行或多行注释。
+    ```shell
+    mysql> SELECT 1+1;     # This comment continues to the end of line
+    mysql> SELECT 1+1;     -- This comment continues to the end of line
+    mysql> SELECT 1 /* this is an in-line comment */ + 1;
+    mysql> SELECT 1+
+    /*
+    this is a
+    multiple-line comment
+    */
+    1;
+    ```
+5. 不支持注释嵌套。有些情况可用，但通常不可用，应该避免使用注释嵌套。
+6. 支持特定的C风格注释变体。让你能够包含mysql特定的SQL扩展。mysql会执行注释里面的SQL，但其他SQL servers会忽略这个注释。
+    ```text
+    /*！MySQL-specific code */。
+    例如SELECT /*! STRAIGHT_JOIN */ col1 FROM table1,table2 WHERE ...
+    mysql认识STRAIGHT_JOIN，并执行，但其他SQL servers没有这语法，不会执行注释里面内容，而是当成普通注释
+    如果在!后面加版本数字，只有大于或等于这个版本的mysql才会执行注释里面内容
+    CREATE TABLE t1(a INT, KEY (a)) /*!50110 KEY_BLOCK_SIZE=1024 */;
+    KEY_BLOCK_SIZE 只有 MySQL 5.1.10或更高的版本才会执行。
+    版本格式The version number uses the format Mmmrr, where M is a major version, mm is a two-digit minor version, and rr is a two-digit release number. 
+    版本号后面必须有空格字符或注释结束
+    ```   
+7. 另一个变体，用来指定Optimizer Hints，优化器相关，用来干预优化器，影响优化策略。例如，影响索引的选择。  
+    SELECT /*+ BKA(t1) */ FROM ... ;  
+    (未测试)SELECT /*+ INDEX(t1 idx_1) */ c1 FROM t1 WHERE c2 = 1;  
+    (未测试)SELECT /*+ NO_INDEX(t1) */ c1 FROM t1 WHERE c2 = 1;  
+    浏览器搜索Optimizer Hints。
+8. 多行注释/* ... */ 里面不支持\c  \q等short-form的mysql客户端命令。  
+    但在/*! ... */ 和 /*+ ... */ 单行注释里面支持。
+
+
+## 火焰图 Flame Graph
+
+![flame-graph.png](readme/flame-graph.png)
+
+![handler::ha_write_row.png](readme/handler-ha_write_row.png)
+
+![handler::ha_update_row.png](readme/handler-ha_update_row.png)
+
+![handler::ha_delete_row.png](readme/handler-ha_delete_row.png)
+
 ## InnoDB 事务 补充
 
 > In InnoDB, all user activity occurs inside a transaction.
