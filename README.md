@@ -1,5 +1,155 @@
 # MySQL 8.x 源码分析
 
+## InnoDB 聚集索引和二级索引
+
+```shell
+# age 应该用一字节的tinyint unsigned，这里为了测试用四字节的int unsigned
+mysql> create table students (student_id int unsigned auto_increment, name varchar(16), age int unsigned, primary key (student_id), index (name));
+Query OK, 0 rows affected (0.01 sec)
+
+mysql> insert into students values (0, 'aaa', 9), (0, 'aaa', 9), (0, 'aaa', 9);
+Query OK, 3 rows affected (0.00 sec)
+Records: 3  Duplicates: 0  Warnings: 0
+
+mysql> select * from students;
++------------+------+------+
+| student_id | name | age  |
++------------+------+------+
+|          1 | aaa  |    9 |
+|          2 | aaa  |    9 |
+|          3 | aaa  |    9 |
++------------+------+------+
+3 rows in set (0.00 sec)
+
+[root@centos /usr/local/mysql/data/school]# hexdump -C students.ibd | tail -n 30
+00010040  00 00 00 00 00 00 00 00  00 9f 00 00 00 06 00 00  |................|
+00010050  00 02 02 72 00 00 00 06  00 00 00 02 01 b2 01 00  |...r............|
+00010060  02 00 1c 69 6e 66 69 6d  75 6d 00 04 00 0b 00 00  |...infimum......|
+00010070  73 75 70 72 65 6d 75 6d  03 00 00 00 10 00 1f 00  |supremum........| (00 00 00 01 学生ID)
+00010080  00 00 01 00 00 00 00 0c  7d 81 00 00 00 a1 01 10  |........}.......| 
+00010090  61 61 61 00 00 00 09 03  00 00 00 18 00 1f 00 00  |aaa.............| (61 61 61 学生名字 00 00 00 09 学生年龄)
+000100a0  00 02 00 00 00 00 0c 7d  81 00 00 00 a1 01 1d 61  |.......}.......a|
+000100b0  61 61 00 00 00 09 03 00  00 00 20 ff b3 00 00 00  |aa........ .....|
+000100c0  03 00 00 00 00 0c 7d 81  00 00 00 a1 01 2a 61 61  |......}......*aa|
+000100d0  61 00 00 00 09 00 00 00  00 00 00 00 00 00 00 00  |a...............|
+000100e0  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
+*
+00013ff0  00 00 00 00 00 70 00 63  27 6d 01 8b 01 2e 85 47  |.....p.c'm.....G|
+00014000  a3 42 ef 83 00 00 00 05  ff ff ff ff ff ff ff ff  |.B..............|
+00014010  00 00 00 00 01 2e 85 65  45 bf 00 00 00 00 00 00  |.......eE.......|
+00014020  00 00 00 00 00 06 00 02  00 a2 80 05 00 00 00 00  |................|
+00014030  00 9b 00 02 00 02 00 03  00 00 00 00 00 00 0c 7d  |...............}|
+00014040  00 00 00 00 00 00 00 00  00 a0 00 00 00 06 00 00  |................|
+00014050  00 02 03 f2 00 00 00 06  00 00 00 02 03 32 01 00  |.............2..|
+00014060  02 00 1c 69 6e 66 69 6d  75 6d 00 04 00 0b 00 00  |...infimum......|
+00014070  73 75 70 72 65 6d 75 6d  03 00 00 00 10 00 0e 61  |supremum.......a| (二级索引 name 61 61 61 后面紧跟主键学生ID 00 00 00 01 说明二级索引会带有主键)
+00014080  61 61 00 00 00 01 03 00  00 00 18 00 0e 61 61 61  |aa...........aaa|
+00014090  00 00 00 02 03 00 00 00  20 ff d5 61 61 61 00 00  |........ ..aaa..|
+000140a0  00 03 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
+000140b0  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
+*
+00017ff0  00 00 00 00 00 70 00 63  a3 42 ef 83 01 2e 85 65  |.....p.c.B.....e|
+00018000  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
+*
+00020000
+```
+
+> 上面数据说明，InnoDB的idb文件，聚集索引和二级索引，二级索引后面会紧跟主键，二级索引查完后，需要非主键数据还得回表到聚簇索引查询数据
+
+innodb int 列 写入磁盘源码 storage/innobase/row/row0mysql.cc
+
+```c++
+/** Stores a non-SQL-NULL field given in the MySQL format in the InnoDB format.
+ The counterpart of this function is row_sel_field_store_in_mysql_format() in
+ row0sel.cc.
+ @return up to which byte we used buf in the conversion */
+byte *row_mysql_store_col_in_innobase_format(
+    dfield_t *dfield,       /*!< in/out: dfield where dtype
+                            information must be already set when
+                            this function is called! */
+    byte *buf,              /*!< in/out: buffer for a converted
+                            integer value; this must be at least
+                            col_len long then! NOTE that dfield
+                            may also get a pointer to 'buf',
+                            therefore do not discard this as long
+                            as dfield is used! */
+    bool row_format_col,    /*!< true if the mysql_data is from
+                             a MySQL row, false if from a MySQL
+                             key value;
+                             in MySQL, a true VARCHAR storage
+                             format differs in a row and in a
+                             key value: in a key value the length
+                             is always stored in 2 bytes! */
+    const byte *mysql_data, /*!< in: MySQL column value, not
+                            SQL NULL; NOTE that dfield may also
+                            get a pointer to mysql_data,
+                            therefore do not discard this as long
+                            as dfield is used! */
+    ulint col_len,          /*!< in: MySQL column length; NOTE that
+                            this is the storage length of the
+                            column in the MySQL format row, not
+                            necessarily the length of the actual
+                            payload data; if the column is a true
+                            VARCHAR then this is irrelevant */
+    ulint comp)             /*!< in: nonzero=compact format */
+{
+  const byte *ptr = mysql_data;
+  const dtype_t *dtype;
+  ulint type;
+  ulint lenlen;
+
+  dtype = dfield_get_type(dfield);
+
+  type = dtype->mtype;
+
+  if (type == DATA_INT) {  // 如果列类型是INT类型
+    /* Store integer data in Innobase in a big-endian format,
+    sign bit negated if the data is a signed integer. In MySQL,
+    integers are stored in a little-endian format. */
+    // 存储在idb里面int用大端格式，在mysql int用的是小端模式，所以需要转成大端
+    byte *p = buf + col_len;
+
+    for (;;) {
+      p--;
+      *p = *mysql_data;
+      if (p == buf) {
+        break;
+      }
+      mysql_data++;
+    }
+    // 如果是不是无符号类型，需要小调整 例如 
+    // 无符号整数1 0x00 00 00 01
+    // 有符号整数1 0x80 00 00 01
+    if (!(dtype->prtype & DATA_UNSIGNED)) {
+      *buf ^= 128;
+    }
+
+    ptr = buf;
+    buf += col_len;
+  } else if ((type == DATA_VARCHAR || type == DATA_VARMYSQL ||
+              type == DATA_BINARY)) { // 如果是VARCHAR ...
+    // ...    
+  } else if (comp && type == DATA_MYSQL && dtype_get_mbminlen(dtype) == 1 &&
+             dtype_get_mbmaxlen(dtype) > 1) { 
+    // ...
+  } else if (!row_format_col) {
+    /* if mysql data is from a MySQL key value
+    since the length is always stored in 2 bytes,
+    we need do nothing here. */
+  } else if (type == DATA_BLOB) {
+    ptr = row_mysql_read_blob_ref(&col_len, mysql_data, col_len);
+  } else if (DATA_GEOMETRY_MTYPE(type)) { // 如果是位置类型
+    /* We use blob to store geometry data except DATA_POINT
+    internally, but in MySQL Layer the datatype is always blob. */
+    ptr = row_mysql_read_geometry(&col_len, mysql_data, col_len);
+  }
+
+  dfield_set_data(dfield, ptr, col_len);
+
+  return (buf);
+}
+```
+
 ## Binlog 补充
 
 binlog, relaylog 前面 4个字节的 magic number
