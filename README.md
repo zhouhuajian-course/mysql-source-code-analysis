@@ -1,5 +1,67 @@
 # MySQL 8.x 源码分析
 
+## LOCK TABLES 和 UNLOCK TABLES 语句 
+
+一个会话，显式地得到表锁，显式地释放表锁
+
+https://dev.mysql.com/doc/refman/8.0/en/lock-tables.html
+
+```text
+# 表名 别名 锁类型 (读或写) ... 可锁定多张表 (lock tables 复数)
+LOCK TABLES
+    tbl_name [[AS] alias] lock_type 
+    [, tbl_name [[AS] alias] lock_type] ...
+
+lock_type: {
+    READ [LOCAL]
+  | [LOW_PRIORITY] WRITE
+}
+
+UNLOCK TABLES
+```
+
+> 每个客户端连接，都会创建一个线程thd管理当前连接，一般称为会话session
+
+1. mysql能够让客户端会话显式获取表锁，可能是为了访问表时和其他会话共同操作，或者当一个会话专门需要访问某些表时，防止其他会话修改这些表
+2. 一个会话只能自己获取或释放锁，不能为其他会话获取锁，不能释放其他会话持有的锁
+3. 锁，可能被用来模拟事务或者当更新表时获取更快的速度 get more speed when updating tables
+4. 表锁 table locks 能够被获取应用在基本表或视图 base tables or views
+5. 对于视图锁，lock tables会锁住所有视图中相关的表
+6. 如果显式使用lock tables锁住一张表，那么在触发器中使用的任何表都会被隐私锁住
+7. 如果显式使用lock tables锁住一张表，那么被外键约束相关联的任何表都会被打开并被隐式地锁住
+8. UNLOCK tables显式地释放所有被当前会话持有的任何表锁，lock tables在获取新的锁之前，会隐式地释放被当前会话持有的任何表锁
+9. unlock tables另一个用处是，释放通过flush tables with read lock加上的全局读锁，这条语句能够让你锁住所有数据库里面的所有表
+10. 一个表锁防范protect against其他会话不恰当的读和写。一个会话持有一个写锁，能够执行表级别操作，例如drop table或者truncate table。对于持有一个读锁的会话，drop table和truncate table操作都是不允许的
+11. lock tables 可以应用在临时表，但会被忽略
+12. lock tables获取的是metadata locks元数据锁
+13. 锁类型 READ [LOCAL] lock，当前会话持有读锁能读取表，但不能写表。多个会话能同时获取一张表的读锁。其他会话不需要显式获取读锁就能读取这张表。LOCAL    The LOCAL modifier enables nonconflicting INSERT statements (concurrent inserts) by other sessions to execute while the lock is held. (See Section 8.11.3, “Concurrent Inserts”.) However, READ LOCAL cannot be used if you are going to manipulate the database using processes external to the server while you hold the lock. 对于innodb表，read local 和 read一样。
+14. 锁类型 [LOW_PRIORITY] WRITE lock，持有该锁的会话能够读和写表。其他会话不能访问该表直到锁被释放。当有写锁时，其他会话请求该表的锁会被阻塞。LOW_PRIORITY已没有效果，. In previous versions of MySQL, it affected locking behavior, but this is no longer true. It is now deprecated and its use produces a warning. Use WRITE without LOW_PRIORITY instead.
+15. 一个会话必须获取所有锁在单一locak tables语句。当有锁时，这个会话只能访问锁住的表.INFORMATION_SCHEMA里面的表时例外。
+16. unlock tables是同时释放一个会话Lock tables所有锁。一个会话能显式释放锁，或隐式释放，在下面几种情况，  
+    ①unlock tables显式释放 ②lock tabkes隐式释放之前存在的锁 ③会话开始一个事务，例如start transaction，隐式地unlock tabkes会被执行，会释放已有的锁
+17. 如果会话连接关闭，无论是正常还是非正常关闭，server隐私释放这个会话的所有表锁。如果客户端重连接，锁不在生效。
+18. 如果在被锁的表上使用alter table，可能会让表变成unlocked.
+19. ... 大量其他内容
+
+| session1 | session2 |
+| --- | --- |
+| 获取 students 表的读锁 lock tables students read; | |
+| select * from students; 成功 | 成功 |
+| select * from students2; 失败 <br> ERROR 1100 (HY000): Table 'students2' was not locked with LOCK TABLES | 成功 |
+| insert into students values (0, 'aaa', 10); 失败 <br> ERROR 1099 (HY000): Table 'students' was locked with a READ lock and can't be updated | 阻塞 |
+| insert into students2 values (0, 'aaa', 10); 失败 <br> ERROR 1100 (HY000): Table 'students2' was not locked with LOCK TABLES | 成功 |
+
+| session1 | session2 |
+| --- | --- |
+| 获取 students 表的写锁 lock tables students write; 隐式释放之前的读锁 | |
+| select * from students; 成功 | 阻塞 |
+| select * from students2; 失败 <br> ERROR 1100 (HY000): Table 'students2' was not locked with LOCK TABLES | 成功 |
+| insert into students values (0, 'aaa', 10); 成功 | 阻塞 |
+| insert into students2 values (0, 'aaa', 10); 失败 <br> ERROR 1100 (HY000): Table 'students2' was not locked with LOCK TABLES | 成功 |
+
+
+## InnoDB Locking
+
 ## InnoDB 聚集索引和二级索引
 
 ```shell
