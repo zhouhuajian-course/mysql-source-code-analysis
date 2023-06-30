@@ -62,6 +62,40 @@ UNLOCK TABLES
 
 ## InnoDB Locking
 
+**Shared and Exclusive Locks 共享锁 和 排他锁**
+
+1. innodb实现了标准的行级别锁，有两种类型 shared locks和exclusive locks
+2. 共享锁允许事务持有读取一行的锁，排他锁允许事务持有更新或删除一行的锁 update or delete a row
+3. 如果事务T1持有在row r上的一个共享锁，那么不同的事务T2在row r上请求共享锁，能够被马上允许，T1和T2都持有一个在row r上的共享锁，如果T2请求排他锁，不能够被马上允许。
+4. 如果事务T1持有在row r上的一个排他锁，不同的事务T2，两种类型的锁后不能马上获取。T2必须等待T1释放在row r上的排他锁
+
+以下为网络上资料，不一定正确
+1. 网络上，共享锁又称为读锁，排他锁又称为独占锁、写锁
+2. SELECT ... LOCK IN SHARE MODE; 查询结果的每一行加共享锁
+3. SELECT ... FOR UPDATE; 查询结果的每一行加排他锁
+4. mysql innodb insert??? update delete等操作，自动给涉及的数据加排他锁 (insert官网貌似没说)
+5. 对于一般的select语句，innodb不会加任何锁，可以通过select ... lock in share mode; 加共享锁，select ... for update; 加排他锁
+
+测试 共享锁 如果在事务中需要读取某些数据，但不需要修改，并且不希望在操作时，被其他事务修改，那么可使用共享锁。其他事务想读数据，可以拿到共享锁。
+
+| 会话1 事务1 | 会话2 事务2 |
+| --- | --- |
+| begin; | |
+| select * from students where student_id = 1 lock in
+share mode; 当前事务只想读，不改，其他事务可加锁读，但不希望其他事务改，加上共享锁 | |
+| | select * from students where student_id = 1 lock in share mode; 其他事务可加锁读 |
+| | update students set name = 'bbb' where student_id = 1; 其他事务尝试改，尝试排他锁，阻塞，不允许马上修改 |
+
+测试 排他锁 如果在事务中需要修改某些数据，修改前也可能需要读，不希望在操作时，被其他事务修改，那么可使用排他锁
+
+| 会话1 事务1 | 会话2 事务2 |
+| --- | --- |
+| begin; | |
+| select * from students where student_id = 1 for update; 当前事务读取数据是为了后面修改，加上排他锁，应为自己会打算修改数据，所以不希望其他事务加锁读(可能幻读)，也不希望其他事务改 | |
+| | select * from students where student_id = 1 lock in share mode; 不希望其他事务读，数据准备被修改，避免幻读，阻塞 |
+| | update students set name = 'bbb' where student_id = 1; 数据准备被修改，不希望其他事务修改，避免同时改，不允许马上加排他锁，阻塞|
+| update students set name = 'bbb' where student_id = 1; 当前事务可改，成功 |  |
+
 ## InnoDB 聚集索引和二级索引
 
 ```shell
