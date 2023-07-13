@@ -1,5 +1,340 @@
 # MySQL 8.x 源码分析
 
+## binlog-format
+
+binlog 格式
+
+https://dev.mysql.com/doc/refman/8.0/en/binary-log-formats.html
+
+```text
+create database shop;
+create table shop.goods (id int primary key, name varchar(16), price decimal(10,2));
+insert into shop.goods values (1, 'aaa', 12.34);
+
+1. 基于行的binlog格式，会记录行修改前后的数据，创建数据库，创建表是记录SQL，插入一条数据，是使用BINLOG语句
+
+bin/mysqld_safe --user=mysql --binlog-format=ROW &
+
+mysql> \! bin/mysqlbinlog data/binlog.000020 --verbose
+# The proper term is pseudo_replica_mode, but we use this compatibility alias
+# to make the statement usable on server versions 8.0.24 and older.
+/*!50530 SET @@SESSION.PSEUDO_SLAVE_MODE=1*/;
+/*!50003 SET @OLD_COMPLETION_TYPE=@@COMPLETION_TYPE,COMPLETION_TYPE=0*/;
+DELIMITER /*!*/;
+# at 4
+#230713 11:37:13 server id 1  end_log_pos 126 CRC32 0xaa0fb786 	Start: binlog v 4, server v 8.0.33 created 230713 11:37:13
+# Warning: this binlog is either in use or was not closed properly.
+BINLOG '
+aXGvZA8BAAAAegAAAH4AAAABAAQAOC4wLjMzAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAEwANAAgAAAAABAAEAAAAYgAEGggAAAAICAgCAAAACgoKKioAEjQA
+CigAAYa3D6o=
+'/*!*/;
+# at 126
+#230713 11:37:13 server id 1  end_log_pos 157 CRC32 0xefe7c19b 	Previous-GTIDs
+# [empty]
+# at 157
+#230713 11:37:30 server id 1  end_log_pos 234 CRC32 0x67be3d5e 	Anonymous_GTID	last_committed=0	sequence_number=1	rbr_only=no	original_committed_timestamp=1689219450063002	immediate_commit_timestamp=1689219450063002 transaction_length=185
+# original_commit_timestamp=1689219450063002 (2023-07-13 11:37:30.063002 CST)
+# immediate_commit_timestamp=1689219450063002 (2023-07-13 11:37:30.063002 CST)
+/*!80001 SET @@session.original_commit_timestamp=1689219450063002*//*!*/;
+/*!80014 SET @@session.original_server_version=80033*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80033*//*!*/;
+SET @@SESSION.GTID_NEXT= 'ANONYMOUS'/*!*/;
+# at 234
+#230713 11:37:30 server id 1  end_log_pos 342 CRC32 0xef4bf360 	Query	thread_id=8	exec_time=0	error_code=0Xid = 15
+SET TIMESTAMP=1689219450/*!*/;
+SET @@session.pseudo_thread_id=8/*!*/;
+SET @@session.foreign_key_checks=1, @@session.sql_auto_is_null=0, @@session.unique_checks=1, @@session.autocommit=1/*!*/;
+SET @@session.sql_mode=1168113696/*!*/;
+SET @@session.auto_increment_increment=1, @@session.auto_increment_offset=1/*!*/;
+/*!\C utf8mb4 *//*!*/;
+SET @@session.character_set_client=255,@@session.collation_connection=255,@@session.collation_server=255/*!*/;
+SET @@session.lc_time_names=0/*!*/;
+SET @@session.collation_database=DEFAULT/*!*/;
+/*!80011 SET @@session.default_collation_for_utf8mb4=255*//*!*/;
+/*!80016 SET @@session.default_table_encryption=0*//*!*/;
+create database shop
+/*!*/;
+# at 342
+#230713 11:38:08 server id 1  end_log_pos 419 CRC32 0x4d4014b2 	Anonymous_GTID	last_committed=1	sequence_number=2	rbr_only=no	original_committed_timestamp=1689219488262608	immediate_commit_timestamp=1689219488262608 transaction_length=244
+# original_commit_timestamp=1689219488262608 (2023-07-13 11:38:08.262608 CST)
+# immediate_commit_timestamp=1689219488262608 (2023-07-13 11:38:08.262608 CST)
+/*!80001 SET @@session.original_commit_timestamp=1689219488262608*//*!*/;
+/*!80014 SET @@session.original_server_version=80033*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80033*//*!*/;
+SET @@SESSION.GTID_NEXT= 'ANONYMOUS'/*!*/;
+# at 419
+#230713 11:38:08 server id 1  end_log_pos 586 CRC32 0x87869091 	Query	thread_id=8	exec_time=0	error_code=0Xid = 16
+SET TIMESTAMP=1689219488/*!*/;
+/*!80013 SET @@session.sql_require_primary_key=0*//*!*/;
+create table shop.goods (id int primary key, name varchar(16), price decimal(10,2))
+/*!*/;
+# at 586
+#230713 11:38:27 server id 1  end_log_pos 665 CRC32 0xaa0fcc3c 	Anonymous_GTID	last_committed=2	sequence_number=3	rbr_only=yes	original_committed_timestamp=1689219507107022	immediate_commit_timestamp=1689219507107022 transaction_length=292
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1689219507107022 (2023-07-13 11:38:27.107022 CST)
+# immediate_commit_timestamp=1689219507107022 (2023-07-13 11:38:27.107022 CST)
+/*!80001 SET @@session.original_commit_timestamp=1689219507107022*//*!*/;
+/*!80014 SET @@session.original_server_version=80033*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80033*//*!*/;
+SET @@SESSION.GTID_NEXT= 'ANONYMOUS'/*!*/;
+# at 665
+#230713 11:38:27 server id 1  end_log_pos 736 CRC32 0xab59df66 	Query	thread_id=8	exec_time=0	error_code=0
+SET TIMESTAMP=1689219507/*!*/;
+BEGIN
+/*!*/;
+# at 736
+#230713 11:38:27 server id 1  end_log_pos 798 CRC32 0xd4f3f9bb 	Table_map: `shop`.`goods` mapped to number 96
+# has_generated_invisible_primary_key=0
+# at 798
+#230713 11:38:27 server id 1  end_log_pos 847 CRC32 0xdedd94ca 	Write_rows: table id 96 flags: STMT_END_F
+
+BINLOG '
+s3GvZBMBAAAAPgAAAB4DAAAAAGAAAAAAAAEABHNob3AABWdvb2RzAAMDD/YEQAAKAgYBAQACA/z/
+ALv589Q=
+s3GvZB4BAAAAMQAAAE8DAAAAAGAAAAAAAAEAAgAD/wABAAAAA2FhYYAAAAwiypTd3g==
+'/*!*/;
+### INSERT INTO `shop`.`goods`
+### SET
+###   @1=1
+###   @2='aaa'
+###   @3=12.34
+# at 847
+#230713 11:38:27 server id 1  end_log_pos 878 CRC32 0x97c2e8b4 	Xid = 18
+COMMIT/*!*/;
+SET @@SESSION.GTID_NEXT= 'AUTOMATIC' /* added by mysqlbinlog */ /*!*/;
+DELIMITER ;
+# End of log file
+/*!50003 SET COMPLETION_TYPE=@OLD_COMPLETION_TYPE*/;
+/*!50530 SET @@SESSION.PSEUDO_SLAVE_MODE=0*/;
+
+2. 基于语句的binlog格式，记录的是SQL语句
+
+bin/mysqld_safe --user=mysql --binlog-format=STATEMENT &
+
+mysql> \! bin/mysqlbinlog data/binlog.000022 --verbose
+# The proper term is pseudo_replica_mode, but we use this compatibility alias
+# to make the statement usable on server versions 8.0.24 and older.
+/*!50530 SET @@SESSION.PSEUDO_SLAVE_MODE=1*/;
+/*!50003 SET @OLD_COMPLETION_TYPE=@@COMPLETION_TYPE,COMPLETION_TYPE=0*/;
+DELIMITER /*!*/;
+# at 4
+#230713 11:43:18 server id 1  end_log_pos 126 CRC32 0x6b095cec 	Start: binlog v 4, server v 8.0.33 created 230713 11:43:18
+# Warning: this binlog is either in use or was not closed properly.
+BINLOG '
+1nKvZA8BAAAAegAAAH4AAAABAAQAOC4wLjMzAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAEwANAAgAAAAABAAEAAAAYgAEGggAAAAICAgCAAAACgoKKioAEjQA
+CigAAexcCWs=
+'/*!*/;
+# at 126
+#230713 11:43:18 server id 1  end_log_pos 157 CRC32 0x714c11fb 	Previous-GTIDs
+# [empty]
+# at 157
+#230713 11:43:25 server id 1  end_log_pos 234 CRC32 0x5de695d4 	Anonymous_GTID	last_committed=0	sequence_number=1	rbr_only=no	original_committed_timestamp=1689219805433340	immediate_commit_timestamp=1689219805433340 transaction_length=185
+# original_commit_timestamp=1689219805433340 (2023-07-13 11:43:25.433340 CST)
+# immediate_commit_timestamp=1689219805433340 (2023-07-13 11:43:25.433340 CST)
+/*!80001 SET @@session.original_commit_timestamp=1689219805433340*//*!*/;
+/*!80014 SET @@session.original_server_version=80033*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80033*//*!*/;
+SET @@SESSION.GTID_NEXT= 'ANONYMOUS'/*!*/;
+# at 234
+#230713 11:43:25 server id 1  end_log_pos 342 CRC32 0x4e8abaee 	Query	thread_id=8	exec_time=0	error_code=0Xid = 6
+SET TIMESTAMP=1689219805/*!*/;
+SET @@session.pseudo_thread_id=8/*!*/;
+SET @@session.foreign_key_checks=1, @@session.sql_auto_is_null=0, @@session.unique_checks=1, @@session.autocommit=1/*!*/;
+SET @@session.sql_mode=1168113696/*!*/;
+SET @@session.auto_increment_increment=1, @@session.auto_increment_offset=1/*!*/;
+/*!\C utf8mb4 *//*!*/;
+SET @@session.character_set_client=255,@@session.collation_connection=255,@@session.collation_server=255/*!*/;
+SET @@session.lc_time_names=0/*!*/;
+SET @@session.collation_database=DEFAULT/*!*/;
+/*!80011 SET @@session.default_collation_for_utf8mb4=255*//*!*/;
+/*!80016 SET @@session.default_table_encryption=0*//*!*/;
+create database shop
+/*!*/;
+# at 342
+#230713 11:43:35 server id 1  end_log_pos 419 CRC32 0xe7318dcb 	Anonymous_GTID	last_committed=1	sequence_number=2	rbr_only=no	original_committed_timestamp=1689219815727392	immediate_commit_timestamp=1689219815727392 transaction_length=244
+# original_commit_timestamp=1689219815727392 (2023-07-13 11:43:35.727392 CST)
+# immediate_commit_timestamp=1689219815727392 (2023-07-13 11:43:35.727392 CST)
+/*!80001 SET @@session.original_commit_timestamp=1689219815727392*//*!*/;
+/*!80014 SET @@session.original_server_version=80033*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80033*//*!*/;
+SET @@SESSION.GTID_NEXT= 'ANONYMOUS'/*!*/;
+# at 419
+#230713 11:43:35 server id 1  end_log_pos 586 CRC32 0x70618810 	Query	thread_id=8	exec_time=0	error_code=0Xid = 7
+SET TIMESTAMP=1689219815/*!*/;
+/*!80013 SET @@session.sql_require_primary_key=0*//*!*/;
+create table shop.goods (id int primary key, name varchar(16), price decimal(10,2))
+/*!*/;
+# at 586
+#230713 11:43:40 server id 1  end_log_pos 665 CRC32 0xa18e3e4b 	Anonymous_GTID	last_committed=2	sequence_number=3	rbr_only=no	original_committed_timestamp=1689219820332034	immediate_commit_timestamp=1689219820332034 transaction_length=308
+# original_commit_timestamp=1689219820332034 (2023-07-13 11:43:40.332034 CST)
+# immediate_commit_timestamp=1689219820332034 (2023-07-13 11:43:40.332034 CST)
+/*!80001 SET @@session.original_commit_timestamp=1689219820332034*//*!*/;
+/*!80014 SET @@session.original_server_version=80033*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80033*//*!*/;
+SET @@SESSION.GTID_NEXT= 'ANONYMOUS'/*!*/;
+# at 665
+#230713 11:43:40 server id 1  end_log_pos 743 CRC32 0x749f6309 	Query	thread_id=8	exec_time=0	error_code=0
+SET TIMESTAMP=1689219820/*!*/;
+BEGIN
+/*!*/;
+# at 743
+#230713 11:43:40 server id 1  end_log_pos 863 CRC32 0xed86bbf1 	Query	thread_id=8	exec_time=0	error_code=0
+SET TIMESTAMP=1689219820/*!*/;
+insert into shop.goods values (1, 'aaa', 12.34)
+/*!*/;
+# at 863
+#230713 11:43:40 server id 1  end_log_pos 894 CRC32 0x02dc848f 	Xid = 8
+COMMIT/*!*/;
+SET @@SESSION.GTID_NEXT= 'AUTOMATIC' /* added by mysqlbinlog */ /*!*/;
+DELIMITER ;
+# End of log file
+/*!50003 SET COMPLETION_TYPE=@OLD_COMPLETION_TYPE*/;
+/*!50530 SET @@SESSION.PSEUDO_SLAVE_MODE=0*/;
+
+3. 基于语句和行的binlog格式，创建数据库，创建表，创建数据都用了SQL，默认基于语句，某些特殊情况才会使用基于行的格式
+
+bin/mysqld_safe --user=mysql --binlog-format=MIXED &
+
+mysql> \! bin/mysqlbinlog data/binlog.000023 --verbose
+# The proper term is pseudo_replica_mode, but we use this compatibility alias
+# to make the statement usable on server versions 8.0.24 and older.
+/*!50530 SET @@SESSION.PSEUDO_SLAVE_MODE=1*/;
+/*!50003 SET @OLD_COMPLETION_TYPE=@@COMPLETION_TYPE,COMPLETION_TYPE=0*/;
+DELIMITER /*!*/;
+# at 4
+#230713 11:47:05 server id 1  end_log_pos 126 CRC32 0xe5f8eb5f 	Start: binlog v 4, server v 8.0.33 created 230713 11:47:05 at startup
+# Warning: this binlog is either in use or was not closed properly.
+ROLLBACK/*!*/;
+BINLOG '
+uXOvZA8BAAAAegAAAH4AAAABAAQAOC4wLjMzAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAC5c69kEwANAAgAAAAABAAEAAAAYgAEGggAAAAICAgCAAAACgoKKioAEjQA
+CigAAV/r+OU=
+'/*!*/;
+# at 126
+#230713 11:47:05 server id 1  end_log_pos 157 CRC32 0x984cdadf 	Previous-GTIDs
+# [empty]
+# at 157
+#230713 11:47:24 server id 1  end_log_pos 234 CRC32 0x2599a553 	Anonymous_GTID	last_committed=0	sequence_number=1	rbr_only=no	original_committed_timestamp=1689220044496084	immediate_commit_timestamp=1689220044496084 transaction_length=185
+# original_commit_timestamp=1689220044496084 (2023-07-13 11:47:24.496084 CST)
+# immediate_commit_timestamp=1689220044496084 (2023-07-13 11:47:24.496084 CST)
+/*!80001 SET @@session.original_commit_timestamp=1689220044496084*//*!*/;
+/*!80014 SET @@session.original_server_version=80033*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80033*//*!*/;
+SET @@SESSION.GTID_NEXT= 'ANONYMOUS'/*!*/;
+# at 234
+#230713 11:47:24 server id 1  end_log_pos 342 CRC32 0x41635c9d 	Query	thread_id=8	exec_time=0	error_code=0Xid = 4
+SET TIMESTAMP=1689220044/*!*/;
+SET @@session.pseudo_thread_id=8/*!*/;
+SET @@session.foreign_key_checks=1, @@session.sql_auto_is_null=0, @@session.unique_checks=1, @@session.autocommit=1/*!*/;
+SET @@session.sql_mode=1168113696/*!*/;
+SET @@session.auto_increment_increment=1, @@session.auto_increment_offset=1/*!*/;
+/*!\C utf8mb4 *//*!*/;
+SET @@session.character_set_client=255,@@session.collation_connection=255,@@session.collation_server=255/*!*/;
+SET @@session.lc_time_names=0/*!*/;
+SET @@session.collation_database=DEFAULT/*!*/;
+/*!80011 SET @@session.default_collation_for_utf8mb4=255*//*!*/;
+/*!80016 SET @@session.default_table_encryption=0*//*!*/;
+create database shop
+/*!*/;
+# at 342
+#230713 11:47:30 server id 1  end_log_pos 419 CRC32 0x2fa7c1c9 	Anonymous_GTID	last_committed=1	sequence_number=2	rbr_only=no	original_committed_timestamp=1689220050518327	immediate_commit_timestamp=1689220050518327 transaction_length=244
+# original_commit_timestamp=1689220050518327 (2023-07-13 11:47:30.518327 CST)
+# immediate_commit_timestamp=1689220050518327 (2023-07-13 11:47:30.518327 CST)
+/*!80001 SET @@session.original_commit_timestamp=1689220050518327*//*!*/;
+/*!80014 SET @@session.original_server_version=80033*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80033*//*!*/;
+SET @@SESSION.GTID_NEXT= 'ANONYMOUS'/*!*/;
+# at 419
+#230713 11:47:30 server id 1  end_log_pos 586 CRC32 0xbb5496d8 	Query	thread_id=8	exec_time=0	error_code=0Xid = 5
+SET TIMESTAMP=1689220050/*!*/;
+/*!80013 SET @@session.sql_require_primary_key=0*//*!*/;
+create table shop.goods (id int primary key, name varchar(16), price decimal(10,2))
+/*!*/;
+# at 586
+#230713 11:47:34 server id 1  end_log_pos 665 CRC32 0x912d42e6 	Anonymous_GTID	last_committed=2	sequence_number=3	rbr_only=no	original_committed_timestamp=1689220054064469	immediate_commit_timestamp=1689220054064469 transaction_length=308
+# original_commit_timestamp=1689220054064469 (2023-07-13 11:47:34.064469 CST)
+# immediate_commit_timestamp=1689220054064469 (2023-07-13 11:47:34.064469 CST)
+/*!80001 SET @@session.original_commit_timestamp=1689220054064469*//*!*/;
+/*!80014 SET @@session.original_server_version=80033*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80033*//*!*/;
+SET @@SESSION.GTID_NEXT= 'ANONYMOUS'/*!*/;
+# at 665
+#230713 11:47:34 server id 1  end_log_pos 743 CRC32 0xebed86a5 	Query	thread_id=8	exec_time=0	error_code=0
+SET TIMESTAMP=1689220054/*!*/;
+BEGIN
+/*!*/;
+# at 743
+#230713 11:47:34 server id 1  end_log_pos 863 CRC32 0x8be81ca0 	Query	thread_id=8	exec_time=0	error_code=0
+SET TIMESTAMP=1689220054/*!*/;
+insert into shop.goods values (1, 'aaa', 12.34)
+/*!*/;
+# at 863
+#230713 11:47:34 server id 1  end_log_pos 894 CRC32 0x0d4c2ddd 	Xid = 6
+COMMIT/*!*/;
+SET @@SESSION.GTID_NEXT= 'AUTOMATIC' /* added by mysqlbinlog */ /*!*/;
+DELIMITER ;
+# End of log file
+/*!50003 SET COMPLETION_TYPE=@OLD_COMPLETION_TYPE*/;
+/*!50530 SET @@SESSION.PSEUDO_SLAVE_MODE=0*/;
+
+增加 更新和删除的binlog MIXED 格式 (MIXED和STATEMENT是记录SQL，ROW记录的是BINLOG语句，记录数据修改前后的数据)
+
+update shop.goods set name = 'bbb' where id = 1;
+delete from shop.goods where id = 1;
+
+# at 236
+#230713 11:54:10 server id 1  end_log_pos 323 CRC32 0x7f572d02 	Query	thread_id=8	exec_time=0	error_code=0
+SET TIMESTAMP=1689220450/*!*/;
+SET @@session.pseudo_thread_id=8/*!*/;
+SET @@session.foreign_key_checks=1, @@session.sql_auto_is_null=0, @@session.unique_checks=1, @@session.autocommit=1/*!*/;
+SET @@session.sql_mode=1168113696/*!*/;
+SET @@session.auto_increment_increment=1, @@session.auto_increment_offset=1/*!*/;
+/*!\C utf8mb4 *//*!*/;
+SET @@session.character_set_client=255,@@session.collation_connection=255,@@session.collation_server=255/*!*/;
+SET @@session.lc_time_names=0/*!*/;
+SET @@session.collation_database=DEFAULT/*!*/;
+/*!80011 SET @@session.default_collation_for_utf8mb4=255*//*!*/;
+BEGIN
+/*!*/;
+# at 323
+#230713 11:54:10 server id 1  end_log_pos 452 CRC32 0x197d9a65 	Query	thread_id=8	exec_time=0	error_code=0
+SET TIMESTAMP=1689220450/*!*/;
+update shop.goods set name = 'bbb' where id = 1
+/*!*/;
+# at 452
+#230713 11:54:10 server id 1  end_log_pos 483 CRC32 0x55ff2e47 	Xid = 3
+COMMIT/*!*/;
+# at 483
+#230713 11:54:25 server id 1  end_log_pos 562 CRC32 0x3b95fc1d 	Anonymous_GTID	last_committed=1	sequence_number=2	rbr_only=no	original_committed_timestamp=1689220465674301	immediate_commit_timestamp=1689220465674301 transaction_length=296
+# original_commit_timestamp=1689220465674301 (2023-07-13 11:54:25.674301 CST)
+# immediate_commit_timestamp=1689220465674301 (2023-07-13 11:54:25.674301 CST)
+/*!80001 SET @@session.original_commit_timestamp=1689220465674301*//*!*/;
+/*!80014 SET @@session.original_server_version=80033*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80033*//*!*/;
+SET @@SESSION.GTID_NEXT= 'ANONYMOUS'/*!*/;
+# at 562
+#230713 11:54:25 server id 1  end_log_pos 640 CRC32 0x2b43d870 	Query	thread_id=8	exec_time=0	error_code=0
+SET TIMESTAMP=1689220465/*!*/;
+BEGIN
+/*!*/;
+# at 640
+#230713 11:54:25 server id 1  end_log_pos 748 CRC32 0x6e0a6192 	Query	thread_id=8	exec_time=0	error_code=0
+SET TIMESTAMP=1689220465/*!*/;
+delete from shop.goods where id = 1
+/*!*/;
+# at 748
+#230713 11:54:25 server id 1  end_log_pos 779 CRC32 0xee716a7e 	Xid = 4
+COMMIT/*!*/;
+SET @@SESSION.GTID_NEXT= 'AUTOMATIC' /* added by mysqlbinlog */ /*!*/;
+DELIMITER ;
+# End of log file
+/*!50003 SET COMPLETION_TYPE=@OLD_COMPLETION_TYPE*/;
+/*!50530 SET @@SESSION.PSEUDO_SLAVE_MODE=0*/;
+
+```
+
 ## 锁 补充
 
 X：            排它锁，并且是左开右闭，临键锁  
