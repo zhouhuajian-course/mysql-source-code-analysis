@@ -1,5 +1,317 @@
 # MySQL 8.x 源码分析
 
+## 锁 补充
+
+X：            排它锁，并且是左开右闭，临键锁  
+X,GAP：        排它锁，并且是间隙锁(左开右开)  
+X,REC_NOT_GAP：排它锁，并且是非间隙的记录锁  
+
+select * from performance_schema.data_locks\G 可以看到当前锁数据
+
+LOCK_TYPE：锁类型，存储引擎独立，对于InnoDB，RECORD表示行级锁，TABLE表示表级锁
+
+```c++
+#define LOCK_TABLE  16  /* table lock */
+#define LOCK_REC    32  /* record lock */
+ 
+/* Precise modes */
+#define LOCK_ORDINARY   0   
+#define LOCK_GAP    512 
+#define LOCK_REC_NOT_GAP 1024   
+#define LOCK_INSERT_INTENTION 2048
+
+/* Basic lock modes */
+enum lock_mode {
+    LOCK_IS = 0, /* intention shared */
+    LOCK_IX,    /* intention exclusive */
+    LOCK_S,     /* shared */
+    LOCK_X,     /* exclusive */
+    LOCK_AUTO_INC,  /* locks the auto-inc counter of a table in an exclusive mode*/
+    ...
+};
+```
+
+https://dev.mysql.com/doc/refman/8.0/en/performance-schema-data-locks-table.html
+
+```text
+> create table users (id int, gid int, name varchar(16), age int, primary key (id), key(gid));
+> insert into users values (10, 10, '', 10), (20, 20, '', 20), (30, 30, '', 30);
+-------------
+id  gid name age
+10  10       10
+20  20       20
+30  30       30
+--------------
+> begin;
+> select * from performance_schema.data_locks\G
+Empty set (0.00 sec)
+> 第一个实验
+> select * from users where id = 20 for update;
+> select * from performance_schema.data_locks\G
+*************************** 1. row ***************************
+               ENGINE: INNODB
+       ENGINE_LOCK_ID: 139845418175648:1064:139845343200688
+ENGINE_TRANSACTION_ID: 3143
+            THREAD_ID: 50
+             EVENT_ID: 17
+        OBJECT_SCHEMA: school
+          OBJECT_NAME: users
+       PARTITION_NAME: NULL
+    SUBPARTITION_NAME: NULL
+           INDEX_NAME: NULL
+OBJECT_INSTANCE_BEGIN: 139845343200688
+            LOCK_TYPE: TABLE (a table-level lock)
+            LOCK_MODE: IX
+          LOCK_STATUS: GRANTED
+            LOCK_DATA: NULL
+*************************** 2. row ***************************
+               ENGINE: INNODB
+       ENGINE_LOCK_ID: 139845418175648:3:4:3:139845343197696
+ENGINE_TRANSACTION_ID: 3143
+            THREAD_ID: 50
+             EVENT_ID: 17
+        OBJECT_SCHEMA: school
+          OBJECT_NAME: users
+       PARTITION_NAME: NULL
+    SUBPARTITION_NAME: NULL
+           INDEX_NAME: PRIMARY (主键索引)
+OBJECT_INSTANCE_BEGIN: 139845343197696
+            LOCK_TYPE: RECORD (a row-level lock,)
+            LOCK_MODE: X,REC_NOT_GAP (排它锁，并且是非间隙记录锁) 
+          LOCK_STATUS: GRANTED
+            LOCK_DATA: 20
+2 rows in set (0.00 sec)
+> rollback;
+> select * from performance_schema.data_locks\G
+Empty set (0.00 sec)
+第二个实验
+> select * from users where gid = 20 for update;
+> select * from performance_schema.data_locks\G
+*************************** 1. row ***************************
+               ENGINE: INNODB
+       ENGINE_LOCK_ID: 139845418175648:1064:139845343200688
+ENGINE_TRANSACTION_ID: 3144
+            THREAD_ID: 50
+             EVENT_ID: 24
+        OBJECT_SCHEMA: school
+          OBJECT_NAME: users
+       PARTITION_NAME: NULL
+    SUBPARTITION_NAME: NULL
+           INDEX_NAME: NULL
+OBJECT_INSTANCE_BEGIN: 139845343200688
+            LOCK_TYPE: TABLE (a table-level lock)
+            LOCK_MODE: IX
+          LOCK_STATUS: GRANTED
+            LOCK_DATA: NULL
+*************************** 2. row ***************************
+               ENGINE: INNODB
+       ENGINE_LOCK_ID: 139845418175648:3:5:3:139845343197696
+ENGINE_TRANSACTION_ID: 3144
+            THREAD_ID: 50
+             EVENT_ID: 24
+        OBJECT_SCHEMA: school
+          OBJECT_NAME: users
+       PARTITION_NAME: NULL
+    SUBPARTITION_NAME: NULL
+           INDEX_NAME: gid (锁的索引是gid)
+OBJECT_INSTANCE_BEGIN: 139845343197696
+            LOCK_TYPE: RECORD (a row-level lock)
+            LOCK_MODE: X (排它锁，并且是默认的临键锁)
+          LOCK_STATUS: GRANTED
+            LOCK_DATA: 20, 20
+*************************** 3. row ***************************
+               ENGINE: INNODB
+       ENGINE_LOCK_ID: 139845418175648:3:4:3:139845343198040
+ENGINE_TRANSACTION_ID: 3144
+            THREAD_ID: 50
+             EVENT_ID: 24
+        OBJECT_SCHEMA: school
+          OBJECT_NAME: users
+       PARTITION_NAME: NULL
+    SUBPARTITION_NAME: NULL
+           INDEX_NAME: PRIMARY (锁的索引是主键)
+OBJECT_INSTANCE_BEGIN: 139845343198040
+            LOCK_TYPE: RECORD
+            LOCK_MODE: X,REC_NOT_GAP (排它锁，记录锁)
+          LOCK_STATUS: GRANTED
+            LOCK_DATA: 20
+*************************** 4. row ***************************
+               ENGINE: INNODB
+       ENGINE_LOCK_ID: 139845418175648:3:5:4:139845343198384
+ENGINE_TRANSACTION_ID: 3144
+            THREAD_ID: 50
+             EVENT_ID: 24
+        OBJECT_SCHEMA: school
+          OBJECT_NAME: users
+       PARTITION_NAME: NULL
+    SUBPARTITION_NAME: NULL
+           INDEX_NAME: gid (索引gid)
+OBJECT_INSTANCE_BEGIN: 139845343198384
+            LOCK_TYPE: RECORD
+            LOCK_MODE: X,GAP (排它锁，间隙锁)
+          LOCK_STATUS: GRANTED
+            LOCK_DATA: 30, 30
+4 rows in set (0.00 sec)
+> rollback
+第三个实验
+> begin;
+> select * from users where gid = 15 for update;
+> select * from performance_schema.data_locks\G
+*************************** 1. row ***************************
+               ENGINE: INNODB
+       ENGINE_LOCK_ID: 139845418175648:1064:139845343200688
+ENGINE_TRANSACTION_ID: 3146
+            THREAD_ID: 50
+             EVENT_ID: 32
+        OBJECT_SCHEMA: school
+          OBJECT_NAME: users
+       PARTITION_NAME: NULL
+    SUBPARTITION_NAME: NULL
+           INDEX_NAME: NULL
+OBJECT_INSTANCE_BEGIN: 139845343200688
+            LOCK_TYPE: TABLE
+            LOCK_MODE: IX
+          LOCK_STATUS: GRANTED
+            LOCK_DATA: NULL
+*************************** 2. row ***************************
+               ENGINE: INNODB
+       ENGINE_LOCK_ID: 139845418175648:3:5:3:139845343197696
+ENGINE_TRANSACTION_ID: 3146
+            THREAD_ID: 50
+             EVENT_ID: 32
+        OBJECT_SCHEMA: school
+          OBJECT_NAME: users
+       PARTITION_NAME: NULL
+    SUBPARTITION_NAME: NULL
+           INDEX_NAME: gid (索引gid)
+OBJECT_INSTANCE_BEGIN: 139845343197696
+            LOCK_TYPE: RECORD
+            LOCK_MODE: X,GAP (排它锁，而且是间隙锁)
+          LOCK_STATUS: GRANTED
+            LOCK_DATA: 20, 20 (二级索引值，主键值)
+2 rows in set (0.00 sec)
+> rollback;
+第四个实验
+> begin;
+l> select * from users where id = 15 for update;
+Empty set (0.00 sec)
+> select * from performance_schema.data_locks\G
+*************************** 1. row ***************************
+               ENGINE: INNODB
+       ENGINE_LOCK_ID: 139845418175648:1064:139845343200688
+ENGINE_TRANSACTION_ID: 3147
+            THREAD_ID: 50
+             EVENT_ID: 38
+        OBJECT_SCHEMA: school
+          OBJECT_NAME: users
+       PARTITION_NAME: NULL
+    SUBPARTITION_NAME: NULL
+           INDEX_NAME: NULL
+OBJECT_INSTANCE_BEGIN: 139845343200688
+            LOCK_TYPE: TABLE
+            LOCK_MODE: IX
+          LOCK_STATUS: GRANTED
+            LOCK_DATA: NULL
+*************************** 2. row ***************************
+               ENGINE: INNODB
+       ENGINE_LOCK_ID: 139845418175648:3:4:3:139845343197696
+ENGINE_TRANSACTION_ID: 3147
+            THREAD_ID: 50
+             EVENT_ID: 38
+        OBJECT_SCHEMA: school
+          OBJECT_NAME: users
+       PARTITION_NAME: NULL
+    SUBPARTITION_NAME: NULL
+           INDEX_NAME: PRIMARY
+OBJECT_INSTANCE_BEGIN: 139845343197696
+            LOCK_TYPE: RECORD
+            LOCK_MODE: X,GAP (排它锁，并且是间隙锁)
+          LOCK_STATUS: GRANTED
+            LOCK_DATA: 20
+2 rows in set (0.00 sec)
+> rollback;
+第五个实验
+> begin;
+> select * from users where id between 10 and 20 for update;
++----+------+------+------+
+| id | gid  | name | age  |
++----+------+------+------+
+| 10 |   10 |      |   10 |
+| 20 |   20 |      |   20 |
++----+------+------+------+
+2 rows in set (0.00 sec)
+> select * from performance_schema.data_locks\G
+*************************** 1. row ***************************
+               ENGINE: INNODB
+       ENGINE_LOCK_ID: 139845418175648:1064:139845343200688
+ENGINE_TRANSACTION_ID: 3149
+            THREAD_ID: 50
+             EVENT_ID: 49
+        OBJECT_SCHEMA: school
+          OBJECT_NAME: users
+       PARTITION_NAME: NULL
+    SUBPARTITION_NAME: NULL
+           INDEX_NAME: NULL
+OBJECT_INSTANCE_BEGIN: 139845343200688
+            LOCK_TYPE: TABLE
+            LOCK_MODE: IX
+          LOCK_STATUS: GRANTED
+            LOCK_DATA: NULL
+*************************** 2. row ***************************
+               ENGINE: INNODB
+       ENGINE_LOCK_ID: 139845418175648:3:4:2:139845343197696
+ENGINE_TRANSACTION_ID: 3149
+            THREAD_ID: 50
+             EVENT_ID: 49
+        OBJECT_SCHEMA: school
+          OBJECT_NAME: users
+       PARTITION_NAME: NULL
+    SUBPARTITION_NAME: NULL
+           INDEX_NAME: PRIMARY
+OBJECT_INSTANCE_BEGIN: 139845343197696
+            LOCK_TYPE: RECORD
+            LOCK_MODE: X,REC_NOT_GAP
+          LOCK_STATUS: GRANTED
+            LOCK_DATA: 10
+*************************** 3. row ***************************
+               ENGINE: INNODB
+       ENGINE_LOCK_ID: 139845418175648:3:4:3:139845343198040
+ENGINE_TRANSACTION_ID: 3149
+            THREAD_ID: 50
+             EVENT_ID: 49
+        OBJECT_SCHEMA: school
+          OBJECT_NAME: users
+       PARTITION_NAME: NULL
+    SUBPARTITION_NAME: NULL
+           INDEX_NAME: PRIMARY
+OBJECT_INSTANCE_BEGIN: 139845343198040
+            LOCK_TYPE: RECORD
+            LOCK_MODE: X
+          LOCK_STATUS: GRANTED
+            LOCK_DATA: 20
+3 rows in set (0.00 sec)
+
+```
+
+## 隔离级别
+
+|隔离级别|脏读Dirty Read|不可重复度NonRepeatable Read|幻读Phantom Read|
+|---|---|---|---|
+|读未提交Read uncommitted|可能|可能|可能|
+|读已提交Read committed|不可能|可能|可能|
+|可重复度Repeatable read|不可能|不可能|可能|
+|可串行化Serializable|不可能|不可能|不可能|
+
+脏读：A事务修改数据未提交，B事务读到修改后数据，A事务回滚，B读取到的是脏数据
+不可重复读：前后多次读取同样数据，数据不一致。事务A，读取数据，事务B修改数据，事务A再次读取，两次读取的数据不一样。
+幻读：前后多次读取，数据总量不一致。事务A，查询id>10数据，共10条，事务B新增了2条数据，事务A再次执行相同语句，查出12条数据，两次统计数据总量不一致，为什么一模一样的SQL，两次查出来不一样，难道是出现幻觉，称为幻读。幻读是在可重复读的事务隔离级别下会出现的一种问题，简单来说，可重复读保证了当前事务不会读取到其他事务已提交的 UPDATE 操作。但同时，也会导致当前事务无法感知到来自其他事务中的 INSERT 或 DELETE 操作，这就是幻读。
+
+## deadlock 死锁
+
+https://dev.mysql.com/doc/refman/8.0/en/glossary.html#glos_deadlock
+
+
+
 ## LOCK TABLES 和 UNLOCK TABLES 语句 
 
 一个会话，显式地得到表锁，显式地释放表锁
@@ -59,22 +371,194 @@ UNLOCK TABLES
 | insert into students values (0, 'aaa', 10); 成功 | 阻塞 |
 | insert into students2 values (0, 'aaa', 10); 失败 <br> ERROR 1100 (HY000): Table 'students2' was not locked with LOCK TABLES | 成功 |
 
+## 查看某个会话的某个事务的所有锁
+
+https://dev.mysql.com/doc/refman/8.0/en/information-schema-innodb-trx-table.html  
+https://dev.mysql.com/doc/refman/8.0/en/performance-schema-data-locks-table.html  
+
+```text
+mysql> begin; (开始事务)
+Query OK, 0 rows affected (0.00 sec)
+
+mysql> select * from students where student_id = 3 for update; (查询学生ID为3的记录，并加上排他锁 Exclusive Lock)
++------------+------+------+
+| student_id | name | age  |
++------------+------+------+
+|          3 | aaa  |    9 |
++------------+------+------+
+1 row in set (0.00 sec)
+
+mysql> select * from information_schema.INNODB_TRX where TRX_MYSQL_THREAD_ID = CONNECTION_ID() \G (查询innodb事务信息，事务线程ID时当前的连接ID，服务端一个客户端连接一个线程)
+*************************** 1. row ***************************
+                    trx_id: 5189 (事务ID)
+                 trx_state: RUNNING
+               trx_started: 2023-06-30 14:00:15
+     trx_requested_lock_id: NULL
+          trx_wait_started: NULL
+                trx_weight: 2
+       trx_mysql_thread_id: 15 (事务 mysql 线程ID)
+                 trx_query: select * from information_schema.INNODB_TRX where TRX_MYSQL_THREAD_ID = CONNECTION_ID()
+       trx_operation_state: NULL
+         trx_tables_in_use: 0
+         trx_tables_locked: 1
+          trx_lock_structs: 2
+     trx_lock_memory_bytes: 1128
+           trx_rows_locked: 1 (事务 行数 被锁住 1 符合预期)
+         trx_rows_modified: 0
+   trx_concurrency_tickets: 0
+       trx_isolation_level: REPEATABLE READ
+         trx_unique_checks: 1
+    trx_foreign_key_checks: 1
+trx_last_foreign_key_error: NULL
+ trx_adaptive_hash_latched: 0
+ trx_adaptive_hash_timeout: 0
+          trx_is_read_only: 0
+trx_autocommit_non_locking: 0
+       trx_schedule_weight: NULL
+1 row in set (0.00 sec)
+
+mysql>  select * from performance_schema.data_locks where ENGINE_TRANSACTION_ID = 5189\G (查询数据锁信息 条件 引擎的事务ID)
+*************************** 1. row ***************************
+               ENGINE: INNODB (引擎 innodb)
+       ENGINE_LOCK_ID: 140072389414048:1067:140072305378736
+ENGINE_TRANSACTION_ID: 5189 (引擎 事务 ID)
+            THREAD_ID: 55
+             EVENT_ID: 19
+        OBJECT_SCHEMA: school (数据库 school)
+          OBJECT_NAME: students (表 students)
+       PARTITION_NAME: NULL
+    SUBPARTITION_NAME: NULL
+           INDEX_NAME: NULL
+OBJECT_INSTANCE_BEGIN: 140072305378736
+            LOCK_TYPE: TABLE (锁类型 表锁)
+            LOCK_MODE: IX (锁模式 意向排他锁)
+          LOCK_STATUS: GRANTED (锁状态 已被授予该锁)
+            LOCK_DATA: NULL
+*************************** 2. row ***************************
+               ENGINE: INNODB
+       ENGINE_LOCK_ID: 140072389414048:6:4:4:140072305375744
+ENGINE_TRANSACTION_ID: 5189
+            THREAD_ID: 55
+             EVENT_ID: 19
+        OBJECT_SCHEMA: school
+          OBJECT_NAME: students
+       PARTITION_NAME: NULL
+    SUBPARTITION_NAME: NULL
+           INDEX_NAME: PRIMARY (索引名 主键)
+OBJECT_INSTANCE_BEGIN: 140072305375744
+            LOCK_TYPE: RECORD (锁类型 记录锁 行锁)
+            LOCK_MODE: X,REC_NOT_GAP (锁模式 排他锁 记录非间隙锁)
+          LOCK_STATUS: GRANTED (锁状态 已被授予该锁)
+            LOCK_DATA: 3 (锁数据 3 主键ID 3)
+2 rows in set (0.01 sec)
+```
 
 ## InnoDB Locking
 
+https://dev.mysql.com/doc/refman/8.0/en/innodb-locking.html
+
+来自网络
+> innodb对记录加锁时，加锁的基本单位是next-key lock，由记录锁和间隙锁组合而成，前开后闭区间，间隙锁是前开后开区间，next-key lock在一些场景下会退化成记录锁或间隙锁
+> 加锁的规则，应该是要考虑可重复读和避免幻读，锁住的目的是为了，保证一个事务中，select多次查询数据一样
+
+```text
+来自网络
+
+生成间隙(gap)锁、临键(next-key)锁的前提条件 是在 RR 隔离级别下。
+1、当使用唯一索引来等值查询的语句时, 如果这行数据存在，不产生间隙锁，而是记录锁。
+2、当使用唯一索引来等值查询的语句时, 如果这行数据不存在，会产生间隙锁。
+3、当使用唯一索引来范围查询的语句时，对于满足查询条件但不存在的数据产生间隙(gap)锁，如果查询存在的记录就会产生记录锁，加在一起就是临键锁(next-key)锁。
+4、当使用普通索引不管是锁住单条，还是多条记录，都会产生间隙锁；
+5、在没有索引上不管是锁住单条，还是多条记录，都会产生表锁；
+
+间隙锁会封锁该条记录相邻两个键之间的空白区域，防止其它事务在这个区域内插入、修改、删除数据，这是为了防止出现 幻读 现象；间隙的范围？根据检索条件向下寻找最靠近检索条件的记录值A作为左区间，向上寻找最靠近检索条件的记录值B作为右区间，即锁定的间隙为（A，B] 左开右闭。
+
+测试
+CREATE TABLE `t` (
+  `id` int  COMMENT '主键',
+  `age` int COMMENT '年龄',
+  `mobile` int  COMMENT '手机号',
+  `name` varchar(8)COMMENT '名称',
+  PRIMARY KEY (`id`),
+  KEY `index_age` (`age`)
+) ENGINE=InnoDB;
+id主键 唯一索引 , age 普通索引，mobile没加索引
+已有数据如下
+id age  mobile  name
+1  1    888881
+4  4    888884
+7  7    888887
+测试前，表t存在的隐藏间隙
+(-∞,1) 1 (1, 4) 4 (4,7) 7 (7,+supernum) supernum
+supernum是数据库维护的假记录最大值
+
+-------------- 唯一索引示例 ----------------
+等值查询且数据存在
+事务A             事务B
+begin;
+select * from t where id = 4 for update;
+                  select * from t where id = 5 for update;
+                  不阻塞
+事务A id=4主键 等值查询 存在记录 主键索引加id=4记录锁，不加间隙锁 
+事务B 不会阻塞，没有锁冲突 
+
+-------------- 等值查询 数据不存在 -----------
+事务A             事务B
+begin;
+select * from t where id = 5 for update;
+                  insert into t select 6,6,888886,'666'   
+                  阻塞
+事务A等值查询 不存在记录 无法加记录锁 但存在间隙锁                  
+-------------- 范围插叙 ---------------
+                事务A             事务B
+begin;
+select * from t where id > 4 for update;
+                  insert into t select 6,6,888886,'666'   
+                  阻塞        
+(4, +supernum]临键锁
+
+----------- 普通索引 ---------------
+事务A             事务B
+begin;
+select * from t where age = 4 for update;
+                  insert into t select 6,6,888886,'666'   
+                  阻塞        
+age普通索引 等值查询age=4，临键锁(1,4] (4,7] 左开右闭          
+
+---------- 无索引 ------------------
+事务A             事务B
+begin;
+select * from t where mobile = 888884 for update;
+                  insert into t select 50,50,888886,'666'   
+                  阻塞             
+事务A mobile无索引 变成表级排它锁
+事务B 因为事务A加了表级排它锁，其他事务无法进行任何的增删改操作                                          
+```
+
+
 **Shared and Exclusive Locks 共享锁 和 排他锁**
+
+> 这两个都是行级锁
+> 共享锁，可以刻意放长操作时间来理解，事务A 第一秒 查询数据 第二秒 事务B改了数据 第三秒 事务A干了其他操作，在有共享锁和没共享锁的情况下，由于事务A干其他操作依赖于之前的查询数据，所以情况会不同，导致的整体的结果可能也不同。
 
 1. innodb实现了标准的行级别锁，有两种类型 shared locks和exclusive locks
 2. 共享锁允许事务持有读取一行的锁，排他锁允许事务持有更新或删除一行的锁 update or delete a row
 3. 如果事务T1持有在row r上的一个共享锁，那么不同的事务T2在row r上请求共享锁，能够被马上允许，T1和T2都持有一个在row r上的共享锁，如果T2请求排他锁，不能够被马上允许。
 4. 如果事务T1持有在row r上的一个排他锁，不同的事务T2，两种类型的锁后不能马上获取。T2必须等待T1释放在row r上的排他锁
 
+> 多个事务都能获取共享锁，说明在事务只想读取数据，不想改数据的情况下，这种方式，能提高并发。
+> 排他锁，则不行，因为并发情况下，修改数据需要相互隔离。
+
 以下为网络上资料，不一定正确
 1. 网络上，共享锁又称为读锁，排他锁又称为独占锁、写锁
-2. SELECT ... LOCK IN SHARE MODE; 查询结果的每一行加共享锁
+2. SELECT ... FOR SHARE 或 SELECT ... LOCK IN SHARE MODE; 查询结果的每一行加共享锁
 3. SELECT ... FOR UPDATE; 查询结果的每一行加排他锁
-4. mysql innodb insert??? update delete等操作，自动给涉及的数据加排他锁 (insert官网貌似没说)
-5. 对于一般的select语句，innodb不会加任何锁，可以通过select ... lock in share mode; 加共享锁，select ... for update; 加排他锁
+4. mysql innodb insert(插入意那块向锁有介绍) update delete等操作，自动给涉及的数据加排他锁 (insert官网貌似没说)
+5. 对于一般的select语句，innodb不会加任何锁
+
+https://dev.mysql.com/doc/refman/8.0/en/select.html
+
+> FOR SHARE and LOCK IN SHARE MODE set shared locks that permit other transactions to read the examined rows but not to update or delete them. FOR SHARE and LOCK IN SHARE MODE are equivalent. However, FOR SHARE, like FOR UPDATE, supports NOWAIT, SKIP LOCKED, and OF tbl_name options. FOR SHARE is a replacement for LOCK IN SHARE MODE, but LOCK IN SHARE MODE remains available for backward compatibility.
 
 测试 共享锁 如果在事务中需要读取某些数据，但不需要修改，并且不希望在操作时，被其他事务修改，那么可使用共享锁。其他事务想读数据，可以拿到共享锁。
 
@@ -95,6 +579,299 @@ share mode; 当前事务只想读，不改，其他事务可加锁读，但不�
 | | select * from students where student_id = 1 lock in share mode; 不希望其他事务读，数据准备被修改，避免幻读，阻塞 |
 | | update students set name = 'bbb' where student_id = 1; 数据准备被修改，不希望其他事务修改，避免同时改，不允许马上加排他锁，阻塞|
 | update students set name = 'bbb' where student_id = 1; 当前事务可改，成功 |  |
+
+
+
+
+
+
+
+
+
+**Intention Locks 意向锁**
+
+> 表级锁，和行级锁 共享锁/排它锁 进行配合使用
+
+1. innodb 支持 多粒度锁 multiple granularity locking，允许行级锁和表级锁共存。
+2. 意向锁是表级锁，表示那种类型的锁，共享或排他，一个事务在一个表中将会后面需要锁住某行。
+3. 两种类型的意向锁，  
+   an intention shared lock (IS) 表明 一个事务计划在一张表里面的个别行上设置一个共享锁  
+   an intention exclusive lock (IX) 表明 一个事务计划在一张表里面的个别行上设置一个排它锁
+4. select ... for share 设置一个IS锁 意向共享锁，select .. for update 设置一个 IX 锁，意向排它锁
+5. 意向锁协议 intention locking protocol 如下  
+   在一个事务请求某表某行共享锁前，必须首先在该表请求IS锁或更强的锁  
+   在一个事务请求某表某行排它锁前，必须首先在该表请求IX锁
+6. 一个锁能被授予，需要这个锁跟已存在的锁能够兼容，不能和已存在的锁冲突。如果冲突则需要等待，直到存在的锁被释放。
+7. 如果一个锁请求和已存在的锁冲突，不能被授予，是因为可能造成死锁deadlock，一个错误会发生。
+8. 意向锁不会阻塞任何事情，除非全表请求 例如lock tables ... write
+9. 意向锁的主要目的是显式某人正在打算锁某表的某行，或者将要锁某表的某行
+10. 事务数据，对于一个意向锁，看起来像下面在 SHOW ENGINE INNODB STATUS and InnoDB monitor 的输出  
+    TABLE LOCK table `test`.`t` trx id 10080 lock mode IX
+
+
+
+
+
+
+
+
+
+
+
+
+
+**Record Locks 记录锁**
+
+> 记录锁、间隙锁、临键锁是锁的算法，对行锁更精细的划分
+> 只锁记录，特定几行记录，他会在遇到的所有记录上设置共享锁或排它锁。
+> 必须是唯一索引或主键(主键也是唯一索引)，否则会变成临键锁
+
+1. 一个记录锁是在一个索引记录上的锁 A record lock is a lock on an index record.
+2. 例如 For example, SELECT c1 FROM t WHERE c1 = 10 FOR UPDATE; 阻止任何其他事务插入、更新或删除 t.c1值为10的所有记录
+3. record locks 总是锁索引记录index records，即使定义表时没设置索引。这种情况，innodb创建一个隐藏的聚簇索引clustered index，并且用这个聚簇索引来进行记录锁
+4. SHOW ENGINE INNODB STATUS and InnoDB monitor output能看到一个记录锁的信息
+    ```text
+    RECORD LOCKS space id 58 page no 3 n bits 72 index `PRIMARY` of table `test`.`t`
+    trx id 10078 lock_mode X locks rec but not gap
+    Record lock, heap no 2 PHYSICAL RECORD: n_fields 3; compact format; info bits 0
+     0: len 4; hex 8000000a; asc     ;;
+     1: len 6; hex 00000000274f; asc     'O;;
+     2: len 7; hex b60000019d0110; asc        ;;
+    ```
+
+
+
+
+
+
+
+
+**Gap Locks 间隙锁**
+
+> 间隙锁，是为了阻止其他事务往间隙插入数据，避免事务同条SQL前后读取数据量不一致而导致出现幻读
+> 记录锁，对单个记录的索引加锁
+> 间隙锁，对索引项之间的间隙加锁，不包括记录本身
+> 临键锁，记录锁+间隙锁，锁定一个范围，并且锁定记录本身
+ 
+1. 一个间隙锁是在index records索引记录间隙上的锁，或者是在第一个索引记录之前或最后一个索引记录之后的间隙上的锁。  
+   A gap lock is a lock on a gap between index records, or a lock on the gap before the first or after the last index record.
+2. 例如   SELECT c1 FROM t WHERE c1 BETWEEN 10 and 20 FOR UPDATE; 阻止其他事务往列t.c1插入一个15的值，无论是否这列上早有该值，因为在该范围内所有存在的值都被锁住了
+3. 一个间隙可能包括一个单索引值,多个索引值，或者甚至为空间隙
+4. 间隙锁是在性能和并发之间权衡tradeoff的一部分。被用来在一些事务隔离级别中
+5. 间隙锁对于锁行使用一个唯一索引去搜索一个唯一行的语句是不需要的。（如果多行组成的唯一索引，条件只有某些行，那么这种情况，间隙锁会出现）。例如，如果id列有a unique index一个唯一索引，下面语句只用一个索引记录锁，id值为100.这个不关心是否其他会话在之前的间隙插入行。  select * from child where id = 100; 如果id没有索引或者有一个非唯一索引a nonunique index 这条语句确实会锁住前面的间隙the preceding gap.
+6. TODO...
+
+来自网络
+ ```text
+间隙锁产生于innodb 可重复度隔离级别的基础上，读操作会可能出现幻读问题  
+如果没有间隙锁，
+CREATE TABLE `t` ( `c1` int(11) NOT NULL, `c2` int(11) DEFAULT NULL, `c3` int(11) DEFAULT NULL, PRIMARY KEY (`c1`), KEY `c2` (`c2`)) ENGINE=InnoDB;
+insert into t values(0,0,0),(10,10,10),(20,20,20),(30,30,30),(40,40,40),(50,50,50);
+会话A                 会话B     
+begin;
+select * from t where c2 = 10 for update;
+返回:(10,10,10)
+                      insert into t value (2,10,11);
+select * from t where c2 = 10 for update;
+返回:(10,10,10),(2,10,11)
+commit;	
+假设没有间隙锁，那么会出现幻读，(2,10,11)原本数据不存在，行锁锁不住，于是诞生了间隙锁
+
+间隙锁和行锁合成 next-key lock，每一个next-key lock是前开后闭区间，如 (0, 10]
+
+原则1：加锁的基本单位是next-key lock
+原则2：加锁是基于索引的，查找过程中访问到的对象才会加锁
+优化1：索引上的等值查询，给唯一索引加锁时，next-key lock退化为行锁
+优化2：索引上的等值插叙，向右遍历时且最后一个值不满足等值条件的时候，next-key退化为间隙锁
+
+select * from t where c3 = 10 for update;
+1. 加锁是基于索引的
+c3不是索引，索引走的是主键索引，加锁就是加在主键索引上
+2. 加锁范围
+遍历主键索引，发现c3=10时，需要在前后记录之间加锁，所以在前一个主键记录(0,0,0)和本记录之间加锁(0,10]
+在后一条主键记录(20,20,20)和本记录之间加锁(10, 20]。然后继续向右遍历，判断c3=20, ！=10，满足优化2规则，next-key lock退化为间隙锁，变成(10, 20)
+同时c3=10加了行锁，汇总锁范围(0,20)，针对id主键
+3. 间隙锁与“往这个间隙插入操作”冲突
+因为上面id主键锁范围是(0,20)，插入(2,2,10)中主键2属于锁范围，阻塞
+
+----------- 查询条件走二级索引的例子 -----------
+
+会话A                    会话B
+begin;
+select c1 from t where c2 = 20 for update;
+                     	场景 1：insert into t values(5,11,11);//阻塞
+                        场景 2: insert into t values(15,10,8);//阻塞
+                        场景 3：insert into t values(17,9,1);//成功
+                        场景 4: insert into t values(25,35,88);//成功
+commit;
+先看会话A执行计划，发现用到覆盖索引   
+explain select c1 from tb where c2 = 20 for update;
+1. 因为条件走c2索引，查询字段c1在索引c2中，用到索引覆盖，索引在搜索过程中，只用到索引a，所以只会在索引a中产生间隙锁
+同时命中条件的对于主键也要加上行锁，主键c1=10被加上行锁
+2. 间隙锁在索引c2范围(10,30)
+
+场景 1：插入到索引 a 时，要插入是索引是(11,5)，属于(a=10,id=10)和(a=30,id=30)之间的锁范围，所以阻塞
+场景 2、3、4 同理分析得出结论
+
+----------- 查询条件走主键索引例子 -----------
+会话A                会话B
+begin;
+select * from t where c2 = 10 for update;
+                    场景 1：insert into tb values(5,11,11);//阻塞
+                    场景 2: insert into tb values(15,10,8);//阻塞
+                    场景 3：insert into tb values(17,9,1);//阻塞(主键上的锁)
+                    场景 4: insert into tb values(25,35,88);//成功
+                    场景 5：insert into tb values(5,5,5);//阻塞(主键上的锁)
+
+commit;	
+跟上一个例子区别在于select *，因此需要回到主键索引查询所有字段，扫描了主键索引
+会在扫描到的索引进行加next-key lock。该语句回表一次，扫描行c1=10，加锁(0,10] (10,20)，
+会话A一个加了锁是索引c2的(10,30)和主键索引的(0,20)
+
+场景 1，2 跟上一个例子一样命中索引 a 和主键索引的锁范围，阻塞
+场景 3 因为 17 属于主键索引(10,20)之间，所以被阻塞
+场景 4 不用索引 a 和主键索引的锁范围，所以成功。
+场景 5，没命中索引 a 的锁，但是命中了主键上的锁范围，所以被主键索引上的锁阻塞
+```
+
+
+
+
+
+
+
+
+
+**Next-Key Locks 临键锁**
+
+1. 一个临键锁是一个在索引记录上的记录锁和一个在索引记录之前的间隙的间隙锁的结合。A next-key lock is a combination of a record lock on the index record and a gap lock on the gap before the index record.
+2. row-level锁，实际上是，index-record锁。
+    一个临键锁是一个记录锁+记录之前的间隙锁。
+3. 如果一个会话有共享或排他锁在记录R，另一个会话不能马上插入新的索引记录，在R索引记录之前
+4. 假设一个索引包含10,11,13,20.可能的临键锁如下
+    ```text
+    (negative infinity, 10]
+    (10, 11]
+    (11, 13]
+    (13, 20]
+    (20, positive infinity)
+    ```
+5. 默认innodb 操作在REPEATABLE READ可重复度隔离级别，在这种情况下，使用next-key locks来搜索和索引扫描，这样可以避免幻读phantom rows
+6. next-key lock在 SHOW ENGINE INNODB STATUS and InnoDB monitor 输出中大概如下
+```text
+RECORD LOCKS space id 58 page no 3 n bits 72 index `PRIMARY` of table `test`.`t`
+trx id 10080 lock_mode X
+Record lock, heap no 1 PHYSICAL RECORD: n_fields 1; compact format; info bits 0
+ 0: len 8; hex 73757072656d756d; asc supremum;;
+
+Record lock, heap no 2 PHYSICAL RECORD: n_fields 3; compact format; info bits 0
+ 0: len 4; hex 8000000a; asc     ;;
+ 1: len 6; hex 00000000274f; asc     'O;;
+ 2: len 7; hex b60000019d0110; asc        ;;
+```
+
+
+
+
+
+
+**Insert Intention Locks插入意向锁**
+
+1. 一个插入意向锁是一种间隙锁，被INSERT操作设置，先于行的插入。
+   虽然名字叫意向锁，其实是间隙锁。
+2. 如果有数据id,name,age，age是索引，有80 90，如果开启事务，插入85，不提交，那么会锁住间隙(80, 90)，但另一个事务插入86，也会锁住间隙(80,90)，他们的索引间隙相同，但是如果他们没有插入相同的位置，那么就不需要相互等待，不需要阻塞。
+3. 假设索引记录有值4和7。不同的事务尝试插入值5和6，他们都锁住了间隙4和7之间的间隙，使用插入意向锁锁住的，先于获取在被插入行的排它锁，但是不会互相阻塞，应为他们插入 的行没有冲突
+4. 下面的例子演示了一个事务正在持有一个插入意向锁，在获取一个在被插入行的排他锁之前  
+    客户端A创建表，包含两个索引记录 90和102，然后开启事务，设置一个排它锁在索引记录 id大于100上。这个排它锁包含了一个间隙锁在102之前  
+    ```text
+    mysql> CREATE TABLE child (id int(11) NOT NULL, PRIMARY KEY(id)) ENGINE=InnoDB;
+    mysql> INSERT INTO child (id) values (90),(102);
+    
+    mysql> START TRANSACTION;
+    mysql> SELECT * FROM child WHERE id > 100 FOR UPDATE;
+    +-----+
+    | id  |
+    +-----+
+    | 102 |
+    +-----+
+    ```  
+    客户端B开启一个事务去间隙里面插入一个记录。这个事务持有一个插入意向锁，它等待去获取一个排它锁
+    ```text
+    mysql> START TRANSACTION;
+    mysql> INSERT INTO child (id) VALUES (101);
+    ```  
+    事务数据 插入意向锁 show engine innodb status 输出中可看到 类似
+    ```text
+    RECORD LOCKS space id 31 page no 3 n bits 72 index `PRIMARY` of table `test`.`child`
+    trx id 8731 lock_mode X locks gap before rec insert intention waiting
+    Record lock, heap no 3 PHYSICAL RECORD: n_fields 3; compact format; info bits 0
+    0: len 4; hex 80000066; asc    f;;
+    1: len 6; hex 000000002215; asc     " ;;
+    2: len 7; hex 9000000172011c; asc     r  ;;...
+    ```
+
+
+
+
+
+
+
+
+**AUTO-INC Locks 自增锁**
+
+1. 一个自增锁时一个特殊表级锁，被有插入到有自增列的表的事务持有。最简单的例子，如果一个事务正在插入值到表，任何其他事务必须等去做他们自己的往该表的插入操作，这样做是为了，第一个事务插入的rows行，能得到连续的主键值so that rows inserted by the first transaction receive consecutive primary key values.
+2. innodb_autoinc_lock_mode变量控制自增锁的算法. 它运行你选择如何权衡between predictable sequences of auto-increment values and maximum concurrency for insert operations.
+
+```text
+会话1事务1
+mysql> begin;
+Query OK, 0 rows affected (0.00 sec)
+mysql> insert into students values (0, 'aaa', 20);
+Query OK, 1 row affected (0.00 sec)
+会话2事务2
+mysql> insert into students values (0, 'aaa', 30);
+Query OK, 1 row affected (0.01 sec)
+这说明了，事务1，插入完成后，自增锁就释放了，如果事务1回滚了，
+那么结果如下，事务1没回滚前，它自己是能看到5的数据
+mysql> select * from students;
++------------+------+------+
+| student_id | name | age  |
++------------+------+------+
+|          1 | aaa  |    9 |
+|          2 | aaa  |    9 |
+|          3 | aaa  |    9 |
+|          4 | aaa  |   10 |
+|          6 | aaa  |   30 |
++------------+------+------+
+5 rows in set (0.00 sec)
+```
+
+```text
+会话1，不停用insert into ... select ... 翻倍表数据
+mysql> insert into students (name, age) select name,age from students;
+Query OK, 524291 rows affected (6.09 sec)
+Records: 524291  Duplicates: 0  Warnings: 0
+会话2，需要等待自增锁释放，才能插入成功，保证会话1插入的主键是连续的
+mysql> insert into students values (0, 'aaa', 30);
+Query OK, 1 row affected (5.00 sec)
+```
+
+**Predicate Locks for Spatial Indexes 空间索引Predicate /ˈpredɪkət/
+Locks**
+
+1. innodb 支持包含空间数据的列的空间索引
+2. 要处理涉及空间索引的锁操作，临键锁在一些事务隔离级别上工作的不太好。在多维数据里没有绝对的排序概念，所以不清楚那个才是next key.
+3. 要能够支持有空间索引的表的隔离劫镖，inndbo使用predicate locks。TODO...
+
+
+
+
+
+
+
+
+
+
 
 ## InnoDB 聚集索引和二级索引
 
